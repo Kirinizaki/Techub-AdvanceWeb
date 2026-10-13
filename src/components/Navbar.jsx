@@ -1,6 +1,7 @@
 import {Menu, Search, ShoppingCart, UserCircle} from "lucide-react";
 import logo from "../assets/TechubLogo.png";
 import { NavLink } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 function Navbar() {
     return (
@@ -38,12 +39,12 @@ function Navbar() {
                     </NavLink>
 
                     <NavLink
-                        to="/products"
+                        to="/components"
                         className={({ isActive }) =>
                             `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
                         }
                     >
-                        Products
+                        Components
                     </NavLink>
 
                     <NavLink
@@ -92,8 +93,22 @@ function Navbar() {
                         />
                     </div>
 
-                    <ShoppingCart size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
-                    <UserCircle size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
+                    <Link
+                        to="/cart"
+                        aria-label="Open shopping cart"
+                        className="text-white hover:text-[#8ea7ff]"
+                    >
+                        <ShoppingCart size={27} className="cursor-pointer" />
+                    </Link>
+
+                    <Link
+                        to="/auth"
+                        aria-label="Open shopping cart"
+                        className="text-white hover:text-[#8ea7ff]"
+                    >
+                        <UserCircle size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
+                    </Link>
+                    
                 </div>
             </div>
         </header>
