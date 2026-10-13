@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import Navbar from './components/Navbar.jsx'
-import Footer from './components/Footer.jsx'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import LandingPage from "./pages/LandingPage";
+import ProductPage from "./pages/ProductPage";
 
 function App() {
   return (
-    <>
-    <Navbar />
-    <Footer />
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/products" element={<ProductPage />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 

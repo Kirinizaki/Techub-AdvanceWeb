@@ -1,5 +1,6 @@
 import {Menu, Search, ShoppingCart, UserCircle} from "lucide-react";
 import logo from "../assets/TechubLogo.png";
+import { NavLink } from "react-router-dom";
 
 function Navbar() {
     return (
@@ -26,12 +27,53 @@ function Navbar() {
 
                 {/* Navigation */}
                 <div className="hidden md:flex flex-1 justify-center items-center gap-8 text-sm lg:text-xl">
-                    <a href="#" className="text-white hover:text-[#ABC4FF] transition-colors">Home</a>
-                    <a href="#" className="text-white hover:text-[#ABC4FF] transition-colors">Products</a>
-                    <a href="#" className="text-white hover:text-[#ABC4FF] transition-colors">Desktop</a>
-                    <a href="#" className="text-white hover:text-[#ABC4FF] transition-colors">Laptop</a>
-                    <a href="#" className="text-white hover:text-[#ABC4FF] transition-colors">PC Builder</a>
+                    <NavLink
+                        to="/"
+                        end
+                        className={({ isActive }) =>
+                            `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
+                        }
+                    >
+                        Home
+                    </NavLink>
+
+                    <NavLink
+                        to="/products"
+                        className={({ isActive }) =>
+                            `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
+                        }
+                    >
+                        Products
+                    </NavLink>
+
+                    <NavLink
+                        to="/desktop"
+                        className={({ isActive }) =>
+                            `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
+                        }
+                    >
+                        Desktop
+                    </NavLink>
+
+                    <NavLink
+                        to="/laptop"
+                        className={({ isActive }) =>
+                            `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
+                        }
+                    >
+                        Laptop
+                    </NavLink>
+
+                    <NavLink
+                        to="/pc-builder"
+                        className={({ isActive }) =>
+                            `${isActive ? "text-[#ABC4FF] font-semibold" : "text-white"} hover:text-[#ABC4FF] transition-colors`
+                        }
+                    >
+                        PC Builder
+                    </NavLink>
                 </div>
+
 
                 {/* Search, Cart and User */}
                 <div className="ml-auto flex items-center justify-end gap-4">
@@ -50,8 +92,8 @@ function Navbar() {
                         />
                     </div>
 
-                    <ShoppingCart Size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
-                    <UserCircle Size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
+                    <ShoppingCart size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
+                    <UserCircle size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
                 </div>
             </div>
         </header>
