@@ -1,5 +1,5 @@
 import {Menu, Search, ShoppingCart, UserCircle} from "lucide-react";
-import logo from "../assets/TechubLogo.png";
+import logo from "../../assets/TechubLogo.png";
 import { NavLink } from "react-router-dom";
 import { Link } from "react-router-dom";
 

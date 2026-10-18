@@ -1,11 +1,11 @@
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import ChatSupport from "../components/ChatSupport";
-import heroImage from "../assets/HeroImage.jpg";
-import desktopImage from "../assets/Desktop.jpg";
-import laptopImage from "../assets/Laptop.jpg";
-import cpuImage from "../assets/CPU.jpg";
-import gpuImage from "../assets/GPU.jpg";
+import Navbar from "../../components/layout/Navbar";
+import Footer from "../../components/layout/Footer";
+import ChatSupport from "../../components/customer/ChatSupport";
+import heroImage from "../../assets/HeroImage.jpg";
+import desktopImage from "../../assets/Desktop.jpg";
+import laptopImage from "../../assets/Laptop.jpg";
+import cpuImage from "../../assets/CPU.jpg";
+import gpuImage from "../../assets/GPU.jpg";
 import { BadgeCheck, Truck, ShieldCheck, Cpu, Headset,} from "lucide-react";
 
 const products = [

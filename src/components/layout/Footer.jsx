@@ -1,4 +1,4 @@
-import logo from '../assets/TechubLogo.png'
+import logo from '../../assets/TechubLogo.png'
 import { ArrowRight } from 'lucide-react'
 
 function Footer() {

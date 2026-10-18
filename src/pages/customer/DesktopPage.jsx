@@ -10,10 +10,10 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
-import ChatSupport from "../components/ChatSupport";
-import ProductCard from "../components/ProductCard";
+import Navbar from "../../components/layout/Navbar";
+import Footer from "../../components/layout/Footer";
+import ChatSupport from "../../components/customer/ChatSupport";
+import ProductCard from "../../components/customer/ProductCard";
 
 const desktopProducts = [
   {

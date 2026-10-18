@@ -1,5 +1,7 @@
 
 import { ShoppingCart, ArrowUpRight } from "lucide-react";
+import { Link } from "react-router-dom";
+
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-PH", {
@@ -18,12 +20,13 @@ function ProductCard({ product }) {
           </span>
         )}
 
-        <img
-          src={product.image}
-          alt={product.name}
-          loading="lazy"
-          className="h-full w-full object-contain transition duration-300 group-hover:scale-105"
-        />
+        <Link to={`/product/${product.id}`}>
+          <img
+            src={product.image}
+            alt={product.name}
+            className="h-full w-full object-contain"
+          />
+        </Link>
 
         <button
           type="button"
