@@ -1,27 +1,62 @@
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, AlertCircle } from "lucide-react";
+import { signInWithEmail } from "../../services/authService";
 
 export default function LoginForm() {
+  const navigate = useNavigate();
+
   const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+    setErrorMessage("");
 
-    // UI only: authentication will be connected later.
-    if (!username.trim() || !password) {
-      alert("Please enter your username and password.");
+    const identifier = username.trim();
+
+    if (!identifier || !password) {
+      setErrorMessage("Please enter your email and password.");
       return;
     }
 
-    console.log("Login form submitted", {
-      username,
-      rememberMe,
-    });
+    // Username-based login will be added through a secure
+    // server-side authentication flow. For now, use email.
+    if (!identifier.includes("@")) {
+      setErrorMessage(
+        "Username login is not configured yet. Please sign in using your email address for now."
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await signInWithEmail({
+        email: identifier,
+        password,
+      });
+
+      // Supabase persists the session using the client defaults.
+      // The Remember me option will be wired up separately.
+      navigate("/");
+    } catch (error) {
+      console.error("Login error:", error);
+
+      setErrorMessage(
+        error.message === "Invalid login credentials"
+          ? "The email or password is incorrect."
+          : error.message ||
+              "We couldn't sign you in. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -34,14 +69,24 @@ export default function LoginForm() {
         Welcome back to Techub!
       </p>
 
+      {errorMessage && (
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <p>{errorMessage}</p>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-        {/* Username */}
+        {/* Email */}
         <div>
           <label
             htmlFor="login-username"
             className="mb-1.5 block text-sm font-medium text-[#080F24]"
           >
-            Username
+            Email Address
           </label>
 
           <input
@@ -49,11 +94,15 @@ export default function LoginForm() {
             name="username"
             type="text"
             autoComplete="username"
-            placeholder="Enter your username"
+            placeholder="Enter your email address"
             value={username}
-            onChange={(event) => setUsername(event.target.value)}
+            onChange={(event) => {
+              setUsername(event.target.value);
+              setErrorMessage("");
+            }}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#0798F9] focus:ring-2 focus:ring-[#0798F9]/20"
             required
+            disabled={loading}
           />
         </div>
 
@@ -74,9 +123,13 @@ export default function LoginForm() {
               autoComplete="current-password"
               placeholder="Enter your password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setErrorMessage("");
+              }}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 pr-11 text-sm outline-none transition focus:border-[#0798F9] focus:ring-2 focus:ring-[#0798F9]/20"
               required
+              disabled={loading}
             />
 
             <button
@@ -113,9 +166,10 @@ export default function LoginForm() {
         {/* Submit */}
         <button
           type="submit"
-          className="w-full rounded-md bg-[#0798F9] py-3 text-sm font-bold tracking-wider text-white transition hover:bg-[#087FCC] focus:outline-none focus:ring-2 focus:ring-[#0798F9] focus:ring-offset-2"
+          disabled={loading}
+          className="w-full rounded-md bg-[#0798F9] py-3 text-sm font-bold tracking-wider text-white transition hover:bg-[#087FCC] focus:outline-none focus:ring-2 focus:ring-[#0798F9] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          LOG IN
+          {loading ? "LOGGING IN..." : "LOG IN"}
         </button>
       </form>
 

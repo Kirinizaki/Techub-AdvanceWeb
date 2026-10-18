@@ -12,6 +12,7 @@ import Footer from "../../components/layout/Footer";
 import LoginForm from "../../components/auth/LoginForm";
 import SignupForm from "../../components/auth/SignupForm";
 import ForgotPasswordForm from "../../components/auth/ForgotPasswordForm";
+import ResetPasswordForm from "../../components/auth/ResetPasswordForm";
 
 import AuthBg from "../../assets/auth-bg.png";
 
@@ -29,6 +30,9 @@ export default function AuthPage() {
       case "/login":
       default:
         return <LoginForm />;
+
+      case "/reset-password":
+        return <ResetPasswordForm />;
     }
   };
 

@@ -2,8 +2,11 @@ import {Menu, Search, ShoppingCart, UserCircle} from "lucide-react";
 import logo from "../../assets/TechubLogo.png";
 import { NavLink } from "react-router-dom";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 function Navbar() {
+    const { user, loading } = useAuth();
+
     return (
         <header className="bg-[#0A1128] border-b-4 border-[#4b4f91]">
             <div className="h-17 px-4 md:px-6 lg:px-10 flex items-center">
@@ -102,11 +105,20 @@ function Navbar() {
                     </Link>
 
                     <Link
-                        to="/auth"
-                        aria-label="Open shopping cart"
+                        to={loading ? "/auth" : user ? "/account/profile" : "/login"}
+                        aria-label={
+                            loading
+                            ? "Loading account"
+                            : user
+                                ? "Open your profile"
+                                : "Log in to your account"
+                        }
                         className="text-white hover:text-[#8ea7ff]"
                     >
-                        <UserCircle size={27} className="text-white cursor-pointer hover:text-[#8ea7ff]" />
+                        <UserCircle
+                            size={27}
+                            className="cursor-pointer text-white hover:text-[#8ea7ff]"
+                        />
                     </Link>
                     
                 </div>
