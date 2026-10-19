@@ -1,5 +1,5 @@
-
-import { Link, NavLink } from "react-router-dom";
+import { useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   UserRound,
   Package,
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { getProfile } from "../../data/accountMockData";
+import { signOut } from "../../services/authService";
 
 const links = [
   { label: "My Account", to: "/account/profile", icon: UserRound },
@@ -22,8 +23,25 @@ const links = [
 ];
 
 export default function AccountSidebar() {
+  const navigate = useNavigate();
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const profile = getProfile();
   const name = `${profile.firstName} ${profile.lastName}`.trim();
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    try {
+      await signOut();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("Logout error:", error);
+      setLoggingOut(false);
+      alert("We couldn't log you out. Please try again.");
+    }
+  };
 
   return (
     <aside className="h-fit rounded-xl border border-slate-200 bg-white p-4">
@@ -73,10 +91,8 @@ export default function AccountSidebar() {
       <div className="mt-5 border-t border-slate-100 pt-4">
         <button
           type="button"
-          onClick={() => {
-            // Connect to your authentication provider later.
-            alert("Connect this action to your sign-out flow.");
-          }}
+          onClick={handleLogout}
+          disabled={loggingOut}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-rose-500 transition hover:bg-rose-50"
         >
           <LogOut size={16} />
