@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import LandingPage from "./pages/customer/LandingPage.jsx";
@@ -13,6 +12,7 @@ import CustomerAccountLayout from "./layouts/CustomerAccountLayout";
 import ProfilePage from "./pages/customer/ProfilePage";
 import EditProfilePage from "./pages/customer/EditProfilePage";
 import AccountPlaceholderPage from "./pages/customer/AccountPlaceholderPage";
+import AdminDashboard from "./pages/admin/AdminDashboard";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
@@ -29,12 +29,13 @@ function App() {
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/signup" element={<AuthPage />} />
-          <Route path="/forgot-password" element={<AuthPage />} /> 
+          <Route path="/forgot-password" element={<AuthPage />} />
           <Route path="/reset-password" element={<AuthPage />} />
           <Route path="/product/:id" element={<ProductDetails />} />
-          <Route path="/account" element={<CustomerAccountLayout />}/>
 
-          
+          {/* Admin */}
+          <Route path="/admin" element={<AdminDashboard />} />
+
           {/* Customer Account */}
           <Route element={<ProtectedRoute />}>
             <Route path="/account" element={<CustomerAccountLayout />}>
@@ -95,10 +96,12 @@ function App() {
             </Route>
           </Route>
 
+          {/* Unknown URLs go to the landing page */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;
