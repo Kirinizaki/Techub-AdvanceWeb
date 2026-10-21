@@ -5,11 +5,8 @@ import {
   ArrowDownToLine,
   Banknote,
   BellRing,
-  Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ClipboardList,
   Filter,
   MapPin,
   Package,
@@ -124,10 +121,12 @@ const money = (value) =>
 
 function StatCard({ title, value, detail, icon: Icon, color }) {
   return (
-    <div className="min-w-0 rounded-lg border border-slate-100 bg-white p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-slate-500">{title}</p>
-        <span className={`flex h-7 w-7 items-center justify-center rounded-md ${color}`}>
+    <div className="min-w-0 rounded-xl bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs font-medium text-slate-600">{title}</p>
+        <span
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${color}`}
+        >
           <Icon size={15} />
         </span>
       </div>
@@ -144,7 +143,7 @@ function StatCard({ title, value, detail, icon: Icon, color }) {
 function StockStatus({ stock, reorder }) {
   if (stock === 0) {
     return (
-      <span className="inline-flex rounded-full bg-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600">
+      <span className="inline-flex whitespace-nowrap rounded-full bg-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600">
         Out of Stock
       </span>
     );
@@ -152,7 +151,7 @@ function StockStatus({ stock, reorder }) {
 
   if (stock <= Math.max(2, Math.floor(reorder / 2))) {
     return (
-      <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">
+      <span className="inline-flex whitespace-nowrap rounded-full bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700">
         Critical Low
       </span>
     );
@@ -160,14 +159,14 @@ function StockStatus({ stock, reorder }) {
 
   if (stock <= reorder) {
     return (
-      <span className="inline-flex rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-semibold text-indigo-700">
+      <span className="inline-flex whitespace-nowrap rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-semibold text-indigo-700">
         Low Stock
       </span>
     );
   }
 
   return (
-    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+    <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-700">
       ● Optimal
     </span>
   );
@@ -200,17 +199,25 @@ export default function AdminInventoryManagement() {
   }, [search, warehouse, stockRows]);
 
   const totalUnits = stockRows.reduce((sum, item) => sum + item.stock, 0);
+
   const lowStock = stockRows.filter(
     (item) => item.stock > 0 && item.stock <= item.reorder
   ).length;
+
   const outOfStock = stockRows.filter((item) => item.stock === 0).length;
+
   const inventoryValue = stockRows.reduce(
     (sum, item) => sum + item.stock * item.cost,
     0
   );
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pageCount = Math.max(
+    1,
+    Math.ceil(filteredRows.length / pageSize)
+  );
+
   const currentPage = Math.min(page, pageCount);
+
   const visibleRows = filteredRows.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
@@ -225,10 +232,14 @@ export default function AdminInventoryManagement() {
     setStockRows((rows) =>
       rows.map((row) =>
         row.sku === item.sku
-          ? { ...row, stock: row.stock + Math.max(row.reorder * 2, 10) }
+          ? {
+              ...row,
+              stock: row.stock + Math.max(row.reorder * 2, 10),
+            }
           : row
       )
     );
+
     setNotice(`${item.name} restocked in this demo.`);
   }
 
@@ -263,37 +274,48 @@ export default function AdminInventoryManagement() {
       )
       .join("\n");
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
+
     link.href = url;
     link.download = "inventory-report.csv";
     link.click();
+
     URL.revokeObjectURL(url);
     setNotice("Inventory CSV exported.");
   }
 
+  function resetFilters() {
+    setSearch("");
+    setWarehouse("All Warehouses");
+    setPage(1);
+  }
+
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#f4f7ff] p-4 text-slate-800 sm:p-5">
+      <div className="w-full min-w-0 text-slate-800">
         {/* Page heading */}
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-blue-700">
-              Product Management / Inventory Operations
-            </p>
-            <h1 className="text-2xl font-bold tracking-tight">
+            <h1 className="text-2xl font-bold">
               Inventory Management &amp; SKU
             </h1>
+
             <p className="mt-1 text-xs text-slate-500">
-              Full System Access · Monitor warehouse stock levels, SKU tracking,
-              replenishment triggers, and transfer logs.
+              Full System Access · Monitor warehouse stock levels, SKU
+              tracking, replenishment triggers, and transfer logs.
             </p>
           </div>
 
           <button
-            onClick={() => setNotice("Create Stock Order is a demo action.")}
-            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            onClick={() =>
+              setNotice("Create Stock Order is a demo action.")
+            }
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
           >
             <Plus size={14} />
             Create Stock Order
@@ -301,75 +323,82 @@ export default function AdminInventoryManagement() {
         </div>
 
         {/* Summary cards */}
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Units in Stock"
             value={totalUnits.toLocaleString()}
             detail="Across all listed warehouse SKUs"
             icon={Warehouse}
-            color="bg-blue-100 text-blue-700"
+            color="bg-blue-50 text-blue-600"
           />
+
           <StatCard
             title="Low Stock Critical"
             value={`${lowStock} SKUs`}
             detail="Below or near reorder point"
             icon={AlertTriangle}
-            color="bg-red-100 text-red-600"
+            color="bg-rose-50 text-rose-600"
           />
+
           <StatCard
             title="Out of Stock SKUs"
             value={`${outOfStock} SKUs`}
             detail="Requires immediate replenishment"
             icon={Package}
-            color="bg-indigo-100 text-indigo-700"
+            color="bg-indigo-50 text-indigo-600"
           />
+
           <StatCard
             title="Total Inventory Value"
             value={money(inventoryValue)}
             detail="Estimated value at unit cost"
             icon={Banknote}
-            color="bg-emerald-100 text-emerald-700"
+            color="bg-emerald-50 text-emerald-600"
           />
-        </div>
+        </section>
 
         {/* Low stock alert */}
         {lowStock + outOfStock > 0 && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-100/80 p-3">
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-red-600">
+          <section className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-rose-600">
                 <BellRing size={15} />
               </span>
+
               <div>
-                <p className="text-xs font-bold text-red-800">
+                <p className="text-xs font-bold text-rose-800">
                   Low Stock Safety Stock Trigger Activated
                 </p>
-                <p className="mt-1 text-[11px] text-red-700">
-                  {lowStock + outOfStock} products need attention. Review stock
-                  levels and restock where necessary.
+
+                <p className="mt-1 text-[11px] text-rose-700">
+                  {lowStock + outOfStock} products need attention. Review
+                  stock levels and restock where necessary.
                 </p>
               </div>
             </div>
 
             <button
               onClick={() => {
-                setSearch("");
-                setWarehouse("All Warehouses");
-                setPage(1);
-                setNotice("Showing all inventory items for stock review.");
+                resetFilters();
+                setNotice(
+                  "Showing all inventory items for stock review."
+                );
               }}
-              className="rounded-md bg-red-700 px-3 py-2 text-[11px] font-semibold text-white hover:bg-red-800"
+              className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-800"
             >
               Review Stock
             </button>
-          </div>
+          </section>
         )}
 
+        {/* Notice */}
         {notice && (
-          <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
             <span>{notice}</span>
+
             <button
               onClick={() => setNotice("")}
-              className="font-semibold hover:underline"
+              className="shrink-0 font-semibold hover:underline"
             >
               Dismiss
             </button>
@@ -377,47 +406,62 @@ export default function AdminInventoryManagement() {
         )}
 
         {/* Inventory panel */}
-        <section className="overflow-hidden rounded-lg border border-slate-100 bg-white">
-          {/* Warehouse tabs */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
-            <div className="flex flex-wrap gap-1">
-              {warehouses.map((item) => (
-                <button
-                  key={item}
-                  onClick={() => changeWarehouse(item)}
-                  className={`rounded-md px-3 py-2 text-[10px] font-medium ${
-                    warehouse === item
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
+        <section className="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
+          {/* Panel heading and actions */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <h2 className="text-sm font-bold">Inventory Overview</h2>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                Monitor SKU quantities, warehouse locations, and stock
+                availability.
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setNotice("Filter options are shown through the search and warehouse tabs.")}
-                className="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
-                title="Filter inventory"
+                onClick={() =>
+                  setNotice(
+                    "Filter inventory using the warehouse tabs and search."
+                  )
+                }
+                className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
               >
-                <Filter size={14} />
+                <Filter size={13} />
+                Filters
               </button>
+
               <button
                 onClick={exportInventory}
-                className="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
-                title="Export CSV"
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
               >
-                <ArrowDownToLine size={14} />
+                <ArrowDownToLine size={13} />
+                Export CSV
               </button>
             </div>
           </div>
 
+          {/* Warehouse tabs */}
+          <div className="flex flex-wrap items-center gap-2 border-y border-slate-100 px-4 py-3">
+            {warehouses.map((item) => (
+              <button
+                key={item}
+                onClick={() => changeWarehouse(item)}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold ${
+                  warehouse === item
+                    ? "bg-blue-700 text-white"
+                    : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
           {/* Search and filters */}
-          <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-slate-200 px-3 py-2 sm:max-w-md">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3 sm:max-w-md">
               <Search size={14} className="shrink-0 text-slate-400" />
+
               <input
                 value={search}
                 onChange={(event) => {
@@ -425,17 +469,13 @@ export default function AdminInventoryManagement() {
                   setPage(1);
                 }}
                 placeholder="Search by SKU, product, or category..."
-                className="w-full bg-transparent text-xs outline-none placeholder:text-slate-400"
+                className="w-full bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
               />
             </div>
 
             <button
-              onClick={() => {
-                setSearch("");
-                setWarehouse("All Warehouses");
-                setPage(1);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
             >
               <SlidersHorizontal size={13} />
               Reset Filters
@@ -444,24 +484,21 @@ export default function AdminInventoryManagement() {
 
           {/* Inventory table */}
           <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[950px] border-collapse text-left">
-              <thead className="bg-slate-50">
-                <tr className="border-y border-slate-100">
+            <table className="w-full min-w-237.5 border-collapse text-left">
+              <thead>
+                <tr className="border-y border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   {[
-                    "SKU CODE",
-                    "PRODUCT NAME & SPEC",
-                    "WAREHOUSE LOCATION",
-                    "IN STOCK",
-                    "RESERVED",
-                    "AVAILABLE",
-                    "REORDER POINT",
-                    "STATUS",
-                    "QUICK ACTION",
+                    "SKU Code",
+                    "Product Name & Spec",
+                    "Warehouse Location",
+                    "In Stock",
+                    "Reserved",
+                    "Available",
+                    "Reorder Point",
+                    "Status",
+                    "Quick Action",
                   ].map((heading) => (
-                    <th
-                      key={heading}
-                      className="px-3 py-3 text-[10px] font-semibold text-slate-500"
-                    >
+                    <th key={heading} className="px-3 py-3">
                       {heading}
                     </th>
                   ))}
@@ -469,77 +506,81 @@ export default function AdminInventoryManagement() {
               </thead>
 
               <tbody>
-                {visibleRows.map((item, index) => {
-                  const available = Math.max(0, item.stock - item.reserved);
+                {visibleRows.map((item) => {
+                  const available = Math.max(
+                    0,
+                    item.stock - item.reserved
+                  );
 
                   return (
                     <tr
                       key={item.sku}
-                      className={`border-b border-slate-100 ${
-                        item.stock === 0
-                          ? "bg-red-50/60"
-                          : index % 2 === 0
-                            ? "bg-white"
-                            : "bg-slate-50/50"
+                      className={`border-b border-slate-100 last:border-0 ${
+                        item.stock === 0 ? "bg-rose-50/60" : "bg-white"
                       }`}
                     >
-                      <td className="px-3 py-4">
-                        <span className="rounded-sm bg-indigo-100 px-1.5 py-1 text-[10px] font-semibold text-indigo-800">
+                      <td className="px-3 py-3">
+                        <span className="whitespace-nowrap rounded-md bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
                           {item.sku}
                         </span>
                       </td>
 
-                      <td className="max-w-[220px] px-3 py-4">
+                      <td className="max-w-60 px-3 py-3">
                         <p className="text-xs font-semibold text-slate-800">
                           {item.name}
                         </p>
-                        <p className="mt-1 text-[10px] text-slate-500">
+
+                        <p className="mt-0.5 text-[10px] text-slate-500">
                           {item.spec}
                         </p>
                       </td>
 
-                      <td className="px-3 py-4">
+                      <td className="px-3 py-3">
                         <p className="text-xs text-slate-700">
                           {item.warehouse}
                         </p>
-                        <p className="mt-1 flex items-center gap-1 text-[10px] text-slate-500">
+
+                        <p className="mt-0.5 flex items-center gap-1 text-[10px] text-slate-500">
                           <MapPin size={10} />
                           {item.location}
                         </p>
                       </td>
 
-                      <td className="px-3 py-4 text-center text-xs font-semibold">
+                      <td className="px-3 py-3 text-center text-xs font-semibold">
                         {item.stock}
                       </td>
 
-                      <td className="px-3 py-4 text-center text-xs text-slate-600">
+                      <td className="px-3 py-3 text-center text-xs text-slate-600">
                         {item.reserved}
                       </td>
 
                       <td
-                        className={`px-3 py-4 text-center text-xs font-bold ${
+                        className={`px-3 py-3 text-center text-xs font-bold ${
                           available <= item.reorder
-                            ? "text-red-600"
+                            ? "text-rose-600"
                             : "text-blue-600"
                         }`}
                       >
                         {available}
                       </td>
 
-                      <td className="px-3 py-4 text-center text-xs text-slate-600">
+                      <td className="px-3 py-3 text-center text-xs text-slate-600">
                         {item.reorder}
                       </td>
 
-                      <td className="px-3 py-4">
-                        <StockStatus stock={item.stock} reorder={item.reorder} />
+                      <td className="px-3 py-3">
+                        <StockStatus
+                          stock={item.stock}
+                          reorder={item.reorder}
+                        />
                       </td>
 
-                      <td className="px-3 py-4">
+                      <td className="px-3 py-3">
                         <button
                           onClick={() => restockItem(item)}
-                          className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[10px] font-semibold text-white ${
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-white ${
                             item.stock === 0
-                              ? "bg-red-700 hover:bg-red-800"
+                              ? "bg-rose-700 hover:bg-rose-800"
                               : "bg-blue-600 hover:bg-blue-700"
                           }`}
                         >
@@ -555,7 +596,7 @@ export default function AdminInventoryManagement() {
                   <tr>
                     <td
                       colSpan={9}
-                      className="px-4 py-12 text-center text-xs text-slate-500"
+                      className="px-4 py-10 text-center text-xs text-slate-500"
                     >
                       No inventory items match your search.
                     </td>
@@ -566,49 +607,57 @@ export default function AdminInventoryManagement() {
           </div>
 
           {/* Pagination */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
             <p className="text-[10px] text-slate-500">
               Showing{" "}
               {filteredRows.length === 0
                 ? 0
                 : (currentPage - 1) * pageSize + 1}
               {"–"}
-              {Math.min(currentPage * pageSize, filteredRows.length)} of{" "}
-              {filteredRows.length} SKUs
+              {Math.min(
+                currentPage * pageSize,
+                filteredRows.length
+              )}{" "}
+              of {filteredRows.length} SKUs
             </p>
 
             <div className="flex items-center gap-1">
               <button
                 disabled={currentPage === 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                className="rounded border border-slate-200 p-1.5 text-slate-500 disabled:opacity-40"
+                onClick={() =>
+                  setPage((value) => Math.max(1, value - 1))
+                }
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
                 aria-label="Previous page"
               >
                 <ChevronLeft size={13} />
               </button>
 
-              {Array.from({ length: pageCount }, (_, index) => index + 1).map(
-                (number) => (
-                  <button
-                    key={number}
-                    onClick={() => setPage(number)}
-                    className={`min-w-7 rounded px-2 py-1.5 text-[10px] ${
-                      currentPage === number
-                        ? "bg-blue-600 font-semibold text-white"
-                        : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {number}
-                  </button>
-                )
-              )}
+              {Array.from(
+                { length: pageCount },
+                (_, index) => index + 1
+              ).map((number) => (
+                <button
+                  key={number}
+                  onClick={() => setPage(number)}
+                  className={`min-w-7 rounded-lg px-2 py-1.5 text-[10px] ${
+                    currentPage === number
+                      ? "bg-blue-600 font-semibold text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {number}
+                </button>
+              ))}
 
               <button
                 disabled={currentPage === pageCount}
                 onClick={() =>
-                  setPage((value) => Math.min(pageCount, value + 1))
+                  setPage((value) =>
+                    Math.min(pageCount, value + 1)
+                  )
                 }
-                className="rounded border border-slate-200 p-1.5 text-slate-500 disabled:opacity-40"
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
                 aria-label="Next page"
               >
                 <ChevronRight size={13} />
@@ -618,14 +667,21 @@ export default function AdminInventoryManagement() {
         </section>
 
         {/* Page footer */}
-        <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 text-[10px] text-slate-500">
+        <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-3 text-[10px] text-slate-500 shadow-sm">
           <p>© 2026 TechHub Inc. All rights reserved.</p>
+
           <div className="flex items-center gap-3">
-            <span>Privacy Policy</span>
+            <a href="#" className="hover:text-blue-600">
+              Privacy Policy
+            </a>
             <span className="text-slate-300">|</span>
-            <span>Terms of Service</span>
+            <a href="#" className="hover:text-blue-600">
+              Terms of Service
+            </a>
             <span className="text-slate-300">|</span>
-            <span>Support Center</span>
+            <a href="#" className="hover:text-blue-600">
+              Support Center
+            </a>
           </div>
         </footer>
       </div>

@@ -53,12 +53,12 @@ export default function AdminLayout({ children, onLogout }) {
 
   const isActive = (href) => location.pathname === href;
 
-  const linkClass = (href) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
-      isActive(href)
-        ? 'bg-blue-50 font-semibold text-blue-700'
-        : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
-    }`;
+const linkClass = (href) =>
+  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+    isActive(href)
+      ? 'bg-blue-50 text-blue-700'
+      : 'text-slate-600 hover:bg-slate-50 hover:text-blue-600'
+  }`;
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] font-sans text-slate-900">
