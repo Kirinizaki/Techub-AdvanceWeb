@@ -13,6 +13,7 @@ import ProfilePage from "./pages/customer/ProfilePage";
 import EditProfilePage from "./pages/customer/EditProfilePage";
 import AccountPlaceholderPage from "./pages/customer/AccountPlaceholderPage";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminProductCatalog from "./pages/admin/AdminProductCatalog";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
@@ -34,7 +35,11 @@ function App() {
           <Route path="/product/:id" element={<ProductDetails />} />
 
           {/* Admin */}
+          {/* Admin */}
           <Route path="/admin" element={<AdminDashboard />} />
+
+          <Route path="/admin/products"element={<AdminProductCatalog />}
+/>
 
           {/* Customer Account */}
           <Route element={<ProtectedRoute />}>
