@@ -17,7 +17,7 @@ import TechubLogo from '../assets/TechubLogo.png';
 
 const productSubLinks = [
   { label: 'Products Catalog', href: '/admin/products' },
-  { label: 'Price Management', href: '/admin/pricing' },
+  { label: 'Price Management', href: '/admin/price-management' },
   { label: 'Inventory & SKU', href: '/admin/inventory' },
 ];
 
@@ -64,7 +64,7 @@ export default function AdminLayout({ children, onLogout }) {
     <div className="min-h-screen bg-[#f4f6fb] font-sans text-slate-900">
       {/* Top Navbar */}
       <header className="bg-[#0b1f3a] px-4 py-3 sm:px-6">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-4 sm:gap-6">
+        <div className="mx-auto flex max-w-350 items-center gap-4 sm:gap-6">
           {/* Brand Logo */}
           <Link
             to="/admin"
@@ -114,9 +114,9 @@ export default function AdminLayout({ children, onLogout }) {
       </header>
 
       {/* Main Layout */}
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-4 py-6 lg:flex-row lg:px-6">
+      <div className="mx-auto flex max-w-350 flex-col gap-6 px-4 py-6 lg:flex-row lg:px-6">
         {/* Sidebar */}
-        <aside className="w-full shrink-0 space-y-3 lg:w-[220px]">
+        <aside className="w-full shrink-0 space-y-3 lg:w-55">
           {/* Admin Information */}
           <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm">
             <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">

@@ -748,7 +748,7 @@ export default function AdminProductCatalog() {
           {/* List view */}
           {view === 'list' ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
+              <table className="w-full min-w-190 text-left">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/60 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                     <th className="px-3 py-3">Product Name &amp; Model</th>
@@ -779,7 +779,7 @@ export default function AdminProductCatalog() {
                             </span>
 
                             <div className="min-w-0">
-                              <p className="max-w-[260px] text-xs font-bold text-slate-800">
+                              <p className="max-w-65 text-xs font-bold text-slate-800">
                                 {product.name}
                               </p>
                               <p className="mt-0.5 text-[10px] text-slate-400">
