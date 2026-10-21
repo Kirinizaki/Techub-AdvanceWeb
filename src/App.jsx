@@ -15,6 +15,7 @@ import AccountPlaceholderPage from "./pages/customer/AccountPlaceholderPage";
 import Dashboard from "./pages/admin/Dashboard.jsx";
 import AdminProductCatalog from "./pages/admin/AdminProductCatalog";
 import AdminPriceManagement from "./pages/admin/AdminPriceManagement";
+import AdminInventoryManagement from "./pages/admin/AdminInventoryManagement";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
@@ -40,10 +41,8 @@ function App() {
           <Route path="/admin" element={<Dashboard />} />
 
           <Route path="/admin/products"element={<AdminProductCatalog />} />
-      <Route 
-      path="/admin/price-management"
-      element={<AdminPriceManagement />}
-      />
+      <Route path="/admin/price-management"element={<AdminPriceManagement />}/>
+      <Route path="/admin/inventory"element={<AdminInventoryManagement />} />
           {/* Customer Account */}
           <Route element={<ProtectedRoute />}>
             <Route path="/account" element={<CustomerAccountLayout />}>
