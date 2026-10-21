@@ -94,7 +94,7 @@ const collapsibles = [
   },
 ];
 
-export default function AdminDashboard() {
+export default function Dashboard() {
   return (
     <AdminLayout>
       {/* Page heading */}

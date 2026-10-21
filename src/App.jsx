@@ -12,7 +12,7 @@ import CustomerAccountLayout from "./layouts/CustomerAccountLayout";
 import ProfilePage from "./pages/customer/ProfilePage";
 import EditProfilePage from "./pages/customer/EditProfilePage";
 import AccountPlaceholderPage from "./pages/customer/AccountPlaceholderPage";
-import AdminDashboard from "./pages/admin/AdminDashboard";
+import Dashboard from "./pages/admin/Dashboard.jsx";
 import AdminProductCatalog from "./pages/admin/AdminProductCatalog";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
@@ -36,7 +36,7 @@ function App() {
 
           {/* Admin */}
           {/* Admin */}
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={<Dashboard />} />
 
           <Route path="/admin/products"element={<AdminProductCatalog />}
 />
