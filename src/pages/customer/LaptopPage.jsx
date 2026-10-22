@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   SlidersHorizontal,
   ChevronDown,
@@ -14,170 +14,14 @@ import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
 import ProductCard from "../../components/customer/ProductCard";
+import { getProducts } from "../../services/productService";
 
-const laptopProducts = [
-  {
-    id: 201,
-    name: "Techub Nitro Gaming Laptop",
-    category: "Laptop",
-    brand: "Acer",
-    price: 49999,
-    oldPrice: 54999,
-    image: "https://images.unsplash.com/photo-1603302576837-37561b2e2302",
-    badge: "Best Seller",
-    stock: true,
-    processor: "Intel Core i5",
-    graphics: "RTX 4050",
-    ram: "16GB",
-    storage: "512GB SSD",
-    screen: "15.6-inch",
-    laptopType: "Gaming",
-  },
-  {
-    id: 202,
-    name: "Techub ROG Performance Laptop",
-    category: "Laptop",
-    brand: "ASUS",
-    price: 79999,
-    oldPrice: 84999,
-    image: "https://images.unsplash.com/photo-1593642632823-8f785ba67e45",
-    badge: "Popular",
-    stock: true,
-    processor: "Intel Core i7",
-    graphics: "RTX 4060",
-    ram: "16GB",
-    storage: "1TB SSD",
-    screen: "16-inch",
-    laptopType: "Gaming",
-  },
-  {
-    id: 203,
-    name: "Techub Everyday Laptop",
-    category: "Laptop",
-    brand: "Lenovo",
-    price: 27999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853",
-    badge: "Budget Pick",
-    stock: true,
-    processor: "AMD Ryzen 5",
-    graphics: "Integrated",
-    ram: "8GB",
-    storage: "512GB SSD",
-    screen: "14-inch",
-    laptopType: "Everyday",
-  },
-  {
-    id: 204,
-    name: "Techub Creator Pro Laptop",
-    category: "Laptop",
-    brand: "ASUS",
-    price: 94999,
-    oldPrice: 99999,
-    image: "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed",
-    badge: "Creator",
-    stock: true,
-    processor: "Intel Core i7",
-    graphics: "RTX 4070",
-    ram: "32GB",
-    storage: "1TB SSD",
-    screen: "16-inch",
-    laptopType: "Creator",
-  },
-  {
-    id: 205,
-    name: "Techub Gaming Essential",
-    category: "Laptop",
-    brand: "HP",
-    price: 42999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1603302576837-37561b2e2302",
-    badge: null,
-    stock: false,
-    processor: "AMD Ryzen 5",
-    graphics: "RTX 3050",
-    ram: "16GB",
-    storage: "512GB SSD",
-    screen: "15.6-inch",
-    laptopType: "Gaming",
-  },
-  {
-    id: 206,
-    name: "Techub Business Laptop",
-    category: "Laptop",
-    brand: "Dell",
-    price: 38999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1593642632823-8f785ba67e45",
-    badge: null,
-    stock: true,
-    processor: "Intel Core i5",
-    graphics: "Integrated",
-    ram: "16GB",
-    storage: "512GB SSD",
-    screen: "14-inch",
-    laptopType: "Business",
-  },
-  {
-    id: 207,
-    name: "Techub Ultra Gaming Laptop",
-    category: "Laptop",
-    brand: "MSI",
-    price: 109999,
-    oldPrice: 119999,
-    image: "https://images.unsplash.com/photo-1593642632823-8f785ba67e45",
-    badge: "High Performance",
-    stock: true,
-    processor: "Intel Core i9",
-    graphics: "RTX 4080",
-    ram: "32GB",
-    storage: "2TB SSD",
-    screen: "17-inch",
-    laptopType: "Gaming",
-  },
-  {
-    id: 208,
-    name: "Techub Student Laptop",
-    category: "Laptop",
-    brand: "Lenovo",
-    price: 22999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853",
-    badge: "Value Pick",
-    stock: true,
-    processor: "Intel Core i5",
-    graphics: "Integrated",
-    ram: "8GB",
-    storage: "256GB SSD",
-    screen: "14-inch",
-    laptopType: "Everyday",
-  },
-];
-
-const laptopTypes = ["Gaming", "Creator", "Business", "Everyday"];
-
-const processors = [
-  "Intel Core i5",
-  "Intel Core i7",
-  "Intel Core i9",
-  "AMD Ryzen 5",
-];
-
-const graphicsOptions = [
-  "RTX 3050",
-  "RTX 4050",
-  "RTX 4060",
-  "RTX 4070",
-  "RTX 4080",
-  "Integrated",
-];
-
-const brands = ["Acer", "ASUS", "Dell", "HP", "Lenovo", "MSI"];
-
-const ramOptions = ["8GB", "16GB", "32GB"];
 
 function LaptopPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [laptopProducts, setLaptopProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [expanded, setExpanded] = useState({
     type: true,
@@ -200,6 +44,76 @@ function LaptopPage() {
   const [sortBy, setSortBy] = useState("featured");
   const [viewMode, setViewMode] = useState("grid");
 
+  const laptopTypes = useMemo(
+    () =>
+      [...new Set(
+        laptopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Laptop Type"
+              )?.[1]
+          )
+          .filter(Boolean)
+      )].sort(),
+    [laptopProducts]
+  );
+
+  const processors = useMemo(
+    () =>
+      [...new Set(
+        laptopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Processor"
+              )?.[1]
+          )
+          .filter(Boolean)
+      )].sort(),
+    [laptopProducts]
+  );
+
+  const graphicsOptions = useMemo(
+    () =>
+      [...new Set(
+        laptopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Graphics"
+              )?.[1]
+          )
+          .filter(Boolean)
+      )].sort(),
+    [laptopProducts]
+  );
+
+  const ramOptions = useMemo(
+    () =>
+      [...new Set(
+        laptopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Memory"
+              )?.[1]
+          )
+          .filter(Boolean)
+      )].sort(),
+    [laptopProducts]
+  );
+
+  const brands = useMemo(
+    () =>
+      [...new Set(
+        laptopProducts
+          .map((product) => product.brand)
+          .filter(Boolean)
+      )].sort(),
+    [laptopProducts]
+  );
+
   const toggleSection = (section) => {
     setExpanded((prev) => ({
       ...prev,
@@ -215,39 +129,98 @@ function LaptopPage() {
     );
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLaptops() {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const products = await getProducts("laptop");
+
+        if (!cancelled) {
+          setLaptopProducts(products);
+        }
+      } catch (error) {
+        console.error("Error loading laptops:", error);
+
+        if (!cancelled) {
+          setLoadError("Unable to load laptops. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadLaptops();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  
   const filteredProducts = useMemo(() => {
     let result = laptopProducts.filter((product) => {
+      const laptopType = product.specifications?.find(
+        ([label]) => label === "Laptop Type"
+      )?.[1];
+
+      const processor = product.specifications?.find(
+        ([label]) => label === "Processor"
+      )?.[1];
+
+      const graphics = product.specifications?.find(
+        ([label]) => label === "Graphics"
+      )?.[1];
+
+      const ram = product.specifications?.find(
+        ([label]) => label === "Memory"
+      )?.[1];
+
       const matchesType =
         selectedTypes.length === 0 ||
-        selectedTypes.includes(product.laptopType);
+        selectedTypes.includes(laptopType);
 
       const matchesCPU =
         selectedCPUs.length === 0 ||
-        selectedCPUs.includes(product.processor);
+        selectedCPUs.includes(processor);
 
       const matchesGPU =
         selectedGPUs.length === 0 ||
-        selectedGPUs.includes(product.graphics);
+        selectedGPUs.includes(graphics);
 
       const matchesRAM =
         selectedRAM.length === 0 ||
-        selectedRAM.includes(product.ram);
+        selectedRAM.includes(ram);
 
       const matchesBrand =
         selectedBrands.length === 0 ||
         selectedBrands.includes(product.brand);
 
       const matchesMin =
-        minPrice === "" || product.price >= Number(minPrice);
+        minPrice === "" ||
+        Number(product.price) >= Number(minPrice);
 
       const matchesMax =
-        maxPrice === "" || product.price <= Number(maxPrice);
+        maxPrice === "" ||
+        Number(product.price) <= Number(maxPrice);
 
       const matchesAvailability =
         availability.length === 0 ||
-        availability.some((status) =>
-          status === "In Stock" ? product.stock : !product.stock
-        );
+        availability.some((status) => {
+          if (status === "In Stock") {
+            return product.stock === "In Stock";
+          }
+
+          if (status === "Out of Stock") {
+            return product.stock === "Out of Stock";
+          }
+
+          return false;
+        });
 
       return (
         matchesType &&
@@ -262,17 +235,16 @@ function LaptopPage() {
     });
 
     if (sortBy === "price-low") {
-      result = [...result].sort((a, b) => a.price - b.price);
+      result.sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-high") {
-      result = [...result].sort((a, b) => b.price - a.price);
+      result.sort((a, b) => b.price - a.price);
     } else if (sortBy === "name") {
-      result = [...result].sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
+      result.sort((a, b) => a.name.localeCompare(b.name));
     }
 
     return result;
   }, [
+    laptopProducts,
     selectedTypes,
     selectedCPUs,
     selectedGPUs,
@@ -535,7 +507,9 @@ function LaptopPage() {
             </h2>
 
             <p className="mt-1 text-xs text-slate-500">
-              Showing {filteredProducts.length} sample laptops
+              {loading
+                ? "Loading laptops..."
+                : `Showing ${filteredProducts.length} laptops`}
             </p>
           </div>
 
@@ -644,11 +618,49 @@ function LaptopPage() {
             </div>
 
             {/* Product grid */}
-            {filteredProducts.length > 0 ? (
+            {loading ? (
+              <div className="flex min-h-75 flex-col items-center justify-center gap-3">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#0798F9]" />
+                <p className="text-sm text-slate-500">
+                  Loading laptops...
+                </p>
+              </div>
+            ) : loadError ? (
+              <div className="flex min-h-75 flex-col items-center justify-center gap-3 text-center">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Unable to load laptops
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {loadError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoading(true);
+                    setLoadError("");
+
+                    getProducts("laptop")
+                      .then((products) => {
+                        setLaptopProducts(products);
+                      })
+                      .catch((error) => {
+                        console.error("Error loading laptops:", error);
+                        setLoadError("Unable to load laptops. Please try again.");
+                      })
+                      .finally(() => {
+                        setLoading(false);
+                      });
+                  }}
+                  className="rounded-lg bg-[#0798F9] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div
                 className={
                   viewMode === "grid"
-                    ? "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4"
+                    ? "grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4"
                     : "grid grid-cols-1 gap-4"
                 }
               >
@@ -657,19 +669,17 @@ function LaptopPage() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-slate-200 bg-white px-5 py-16 text-center">
-                <h3 className="font-heading text-lg font-bold">
+              <div className="flex min-h-75 flex-col items-center justify-center gap-3 text-center">
+                <h3 className="text-lg font-semibold text-slate-800">
                   No laptops found
                 </h3>
-
-                <p className="mt-2 text-sm text-slate-500">
-                  Try changing your filters to see more results.
+                <p className="text-sm text-slate-500">
+                  Try adjusting your filters or clearing them.
                 </p>
-
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="mt-5 rounded-lg bg-slate-950 px-5 py-3 text-xs font-semibold text-white transition hover:bg-blue-600"
+                  className="rounded-lg bg-[#0798F9] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600"
                 >
                   Clear Filters
                 </button>

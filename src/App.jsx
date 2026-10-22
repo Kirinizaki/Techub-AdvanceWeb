@@ -14,89 +14,91 @@ import ProfilePage from "./pages/customer/ProfilePage";
 import EditProfilePage from "./pages/customer/EditProfilePage";
 import AccountPlaceholderPage from "./pages/customer/AccountPlaceholderPage";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import { CartProvider } from "./context/CartContext";
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/components" element={<ComponentsPage />} />
-          <Route path="/desktop" element={<DesktopPage />} />
-          <Route path="/laptop" element={<LaptopPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route path="/pc-builder" element={<PCBuilder />} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/signup" element={<AuthPage />} />
-          <Route path="/forgot-password" element={<AuthPage />} /> 
-          <Route path="/reset-password" element={<AuthPage />} />
-          <Route path="/product/:id" element={<ProductDetails />} />
-          <Route path="/account" element={<CustomerAccountLayout />}/>
+      <CartProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/components" element={<ComponentsPage />} />
+            <Route path="/desktop" element={<DesktopPage />} />
+            <Route path="/laptop" element={<LaptopPage />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/pc-builder" element={<PCBuilder />} />
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/signup" element={<AuthPage />} />
+            <Route path="/forgot-password" element={<AuthPage />} /> 
+            <Route path="/reset-password" element={<AuthPage />} />
+            <Route path="/product/:id" element={<ProductDetails />} />
 
-          
-          {/* Customer Account */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/account" element={<CustomerAccountLayout />}>
-              <Route index element={<Navigate to="profile" replace />} />
+            
+            {/* Customer Account */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/account" element={<CustomerAccountLayout />}>
+                <Route index element={<Navigate to="profile" replace />} />
 
-              <Route path="profile" element={<ProfilePage />} />
-              <Route path="profile/edit" element={<EditProfilePage />} />
+                <Route path="profile" element={<ProfilePage />} />
+                <Route path="profile/edit" element={<EditProfilePage />} />
 
-              <Route
-                path="orders"
-                element={
-                  <AccountPlaceholderPage
-                    title="My Orders"
-                    description="View your purchases, check order status, and track deliveries."
-                  />
-                }
-              />
+                <Route
+                  path="orders"
+                  element={
+                    <AccountPlaceholderPage
+                      title="My Orders"
+                      description="View your purchases, check order status, and track deliveries."
+                    />
+                  }
+                />
 
-              <Route
-                path="orders/:orderId"
-                element={
-                  <AccountPlaceholderPage
-                    title="Order Details"
-                    description="Order details and tracking information will appear here."
-                  />
-                }
-              />
+                <Route
+                  path="orders/:orderId"
+                  element={
+                    <AccountPlaceholderPage
+                      title="Order Details"
+                      description="Order details and tracking information will appear here."
+                    />
+                  }
+                />
 
-              <Route
-                path="wishlist"
-                element={
-                  <AccountPlaceholderPage
-                    title="My Wishlist"
-                    description="Save products you love and find them here when you're ready to shop."
-                  />
-                }
-              />
+                <Route
+                  path="wishlist"
+                  element={
+                    <AccountPlaceholderPage
+                      title="My Wishlist"
+                      description="Save products you love and find them here when you're ready to shop."
+                    />
+                  }
+                />
 
-              <Route
-                path="addresses"
-                element={
-                  <AccountPlaceholderPage
-                    title="Saved Addresses"
-                    description="Manage your shipping and delivery addresses."
-                  />
-                }
-              />
+                <Route
+                  path="addresses"
+                  element={
+                    <AccountPlaceholderPage
+                      title="Saved Addresses"
+                      description="Manage your shipping and delivery addresses."
+                    />
+                  }
+                />
 
-              <Route
-                path="settings"
-                element={
-                  <AccountPlaceholderPage
-                    title="Account Settings"
-                    description="Manage your password, security, and preferences."
-                  />
-                }
-              />
+                <Route
+                  path="settings"
+                  element={
+                    <AccountPlaceholderPage
+                      title="Account Settings"
+                      description="Manage your password, security, and preferences."
+                    />
+                  }
+                />
+              </Route>
             </Route>
-          </Route>
 
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </CartProvider>
     </AuthProvider>
   )
 }

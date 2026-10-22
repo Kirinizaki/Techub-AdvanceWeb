@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ShoppingBag,
   Trash2,
@@ -17,31 +17,7 @@ import { Link } from "react-router-dom";
 import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
-
-const initialCartItems = [
-  {
-    id: 1,
-    name: "AMD Ryzen 7 7800X3D",
-    category: "Processor",
-    brand: "AMD",
-    price: 22999,
-    image:
-      "https://images.unsplash.com/photo-1555617981-dac3880eac6e",
-    quantity: 1,
-    stock: true,
-  },
-  {
-    id: 2,
-    name: "ASUS GeForce RTX 4070",
-    category: "Graphics Card",
-    brand: "ASUS",
-    price: 38999,
-    image:
-      "https://images.unsplash.com/photo-1591488320449-011701bb6704",
-    quantity: 1,
-    stock: true,
-  },
-];
+import { useCart } from "../../context/CartContext";
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-PH", {
@@ -51,40 +27,16 @@ const formatPrice = (price) =>
   }).format(price);
 
 function CartPage() {
-  const [cartItems, setCartItems] = useState(initialCartItems);
+  const {
+    cartItems,
+    totalItems,
+    subtotal,
+    updateQuantity,
+    removeFromCart,
+  } = useCart();
+
   const [promoCode, setPromoCode] = useState("");
   const [promoMessage, setPromoMessage] = useState("");
-
-  const subtotal = useMemo(
-    () =>
-      cartItems.reduce(
-        (total, item) => total + item.price * item.quantity,
-        0
-      ),
-    [cartItems]
-  );
-
-  const totalItems = cartItems.reduce(
-    (total, item) => total + item.quantity,
-    0
-  );
-
-  const updateQuantity = (id, amount) => {
-    setCartItems((items) =>
-      items.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              quantity: Math.max(1, item.quantity + amount),
-            }
-          : item
-      )
-    );
-  };
-
-  const removeItem = (id) => {
-    setCartItems((items) => items.filter((item) => item.id !== id));
-  };
 
   const applyPromo = (event) => {
     event.preventDefault();
@@ -136,7 +88,7 @@ function CartPage() {
               </div>
 
               <Link
-                to="/products"
+                to="/components"
                 className="flex items-center gap-2 text-xs font-semibold text-blue-600 transition hover:text-blue-800"
               >
                 <ArrowLeft size={15} />
@@ -176,14 +128,14 @@ function CartPage() {
 
                             <p
                               className={`mt-2 flex items-center gap-1.5 text-[11px] font-medium ${
-                                item.stock
+                                item.stockQuantity > 0
                                   ? "text-emerald-600"
                                   : "text-red-500"
                               }`}
                             >
                               <span
                                 className={`h-1.5 w-1.5 rounded-full ${
-                                  item.stock
+                                  item.stockQuantity > 0
                                     ? "bg-emerald-500"
                                     : "bg-red-500"
                                 }`}
@@ -194,7 +146,7 @@ function CartPage() {
 
                           <button
                             type="button"
-                            onClick={() => removeItem(item.id)}
+                            onClick={() => removeFromCart(item.id)}
                             aria-label={`Remove ${item.name}`}
                             className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500"
                           >
@@ -213,7 +165,7 @@ function CartPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateQuantity(item.id, -1)
+                                  updateQuantity(item.id, item.quantity - 1)
                                 }
                                 disabled={item.quantity <= 1}
                                 aria-label="Decrease quantity"
@@ -229,8 +181,9 @@ function CartPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateQuantity(item.id, 1)
+                                  updateQuantity(item.id, item.quantity + 1)
                                 }
+                                disabled={item.quantity >= item.stockQuantity}
                                 aria-label="Increase quantity"
                                 className="p-2 text-slate-500 transition hover:bg-slate-50"
                               >
@@ -387,7 +340,7 @@ function CartPage() {
                   </p>
 
                   <Link
-                    to="/products"
+                    to="/components"
                     className="mt-4 flex w-full items-center justify-center rounded-lg border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-600"
                   >
                     Continue Shopping
@@ -413,7 +366,7 @@ function CartPage() {
             </p>
 
             <Link
-              to="/products"
+              to="/components"
               className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               Browse Products

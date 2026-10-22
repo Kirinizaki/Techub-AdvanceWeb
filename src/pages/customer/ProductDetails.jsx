@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ShoppingCart,
@@ -18,85 +18,59 @@ import {
 import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
+import { getProducts } from "../../services/productService";
+import { useCart } from "../../context/CartContext";
 
-// Temporary sample data.
-// Replace this with database data when your product backend is ready.
-const sampleProduct = {
-  id: "gpu-001",
-  name: "GeForce RTX 4070 SUPER",
-  brand: "NVIDIA",
-  category: "Graphics Card",
-  model: "RTX 4070 SUPER",
-  price: 38999,
-  originalPrice: 42999,
-  rating: 4.8,
-  reviews: 24,
-  stock: 12,
-  description:
-    "Experience smooth gaming and powerful performance with the GeForce RTX 4070 SUPER. Built for demanding games, creative workloads, and high-quality visuals.",
-  image:
-    "https://placehold.co/700x600/F1F3F5/26334D?text=RTX+4070+SUPER",
-  specifications: [
-    ["Brand", "NVIDIA"],
-    ["Model", "GeForce RTX 4070 SUPER"],
-    ["Graphics Memory", "12GB GDDR6X"],
-    ["Interface", "PCI Express"],
-    ["Product Type", "Graphics Card"],
-  ],
-};
+const relatedProducts = [];
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0,
-  }).format(price);
-
-
-const relatedProducts = [
-  {
-    id: "gpu-002",
-    name: "GeForce RTX 4060",
-    category: "Graphics Card",
-    price: 16999,
-    image: "https://placehold.co/400x300/F1F3F5/26334D?text=RTX+4060",
-  },
-  {
-    id: "gpu-003",
-    name: "GeForce RTX 4070",
-    category: "Graphics Card",
-    price: 32999,
-    image: "https://placehold.co/400x300/F1F3F5/26334D?text=RTX+4070",
-  },
-  {
-    id: "cpu-001",
-    name: "AMD Ryzen 7 Processor",
-    category: "Processor",
-    price: 18999,
-    image: "https://placehold.co/400x300/F1F3F5/26334D?text=Ryzen+7",
-  },
-  {
-    id: "ram-001",
-    name: "16GB DDR5 Memory",
-    category: "Memory",
-    price: 3499,
-    image: "https://placehold.co/400x300/F1F3F5/26334D?text=DDR5+Memory",
-  },
-];
+  }).format(Number(price) || 0);
 
 
 export default function ProductDetails() {
   const { id } = useParams();
+  const { addToCart } = useCart();
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Sample product for layout testing.
-  // Use `id` to fetch the matching product when your database is connected.
-  const product = sampleProduct;
+  useEffect(() => {
+    async function loadProduct() {
+      try {
+        setLoading(true);
+        setError("");
 
+        const products = await getProducts();
+        const matchingProduct = products.find(
+          (item) => item.id === id
+        );
+
+        if (!matchingProduct) {
+          setError("Product not found or is no longer available.");
+          return;
+        }
+
+        setProduct(matchingProduct);
+      } catch (err) {
+        console.error("Failed to load product:", err);
+        setError("Unable to load this product. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadProduct();
+  }, [id]);
+  
   const [quantity, setQuantity] = useState(1);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
 
-  const stock = Math.max(0, Number(product.stock) || 0);
+  const stock = Number(product?.stockQuantity ?? 0);
   const numericQuantity = Number(quantity);
   const validQuantity =
     Number.isInteger(numericQuantity) &&
@@ -125,13 +99,50 @@ export default function ProductDetails() {
   };
 
   const handleAddToCart = () => {
-    if (!validQuantity || stock === 0) return;
+    if (!validQuantity || stock === 0 || !product) return;
 
-    // Demo behavior only.
-    // Connect this handler to your cart state or backend later.
+    addToCart(product, numericQuantity);
+
     setAddedToCart(true);
     window.setTimeout(() => setAddedToCart(false), 2000);
   };
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F5F6F8] text-[#080F24]">
+        <Navbar />
+        <main className="mx-auto max-w-7xl px-4 py-20 text-center">
+          <p className="text-sm text-slate-500">
+            Loading product details...
+          </p>
+        </main>
+        <Footer />
+        <ChatSupport />
+      </div>
+    );
+  }
+
+  if (error || !product) {
+    return (
+      <div className="min-h-screen bg-[#F5F6F8] text-[#080F24]">
+        <Navbar />
+        <main className="mx-auto max-w-7xl px-4 py-20 text-center">
+          <h1 className="text-xl font-bold">
+            {error || "Product not found."}
+          </h1>
+          <Link
+            to="/components"
+            className="mt-5 inline-flex rounded-lg bg-[#0798F9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#087FD0]"
+          >
+            Back to Components
+          </Link>
+        </main>
+        <Footer />
+        <ChatSupport />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] text-[#080F24]">
@@ -220,18 +231,11 @@ export default function ProductDetails() {
               {product.name}
             </h1>
 
-            {/* Rating */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 text-amber-500">
-                <Star size={17} fill="currentColor" />
-                <span className="font-semibold text-[#080F24]">
-                  {product.rating}
-                </span>
-              </div>
-
-              <span className="text-sm text-slate-500">
-                ({product.reviews} reviews)
-              </span>
+            {/* Customer rating */}
+            <div className="mt-4">
+              <p className="text-sm text-slate-500">
+                Customer reviews are not available yet.
+              </p>
             </div>
 
             {/* Price */}
@@ -417,7 +421,7 @@ export default function ProductDetails() {
           </p>
 
           <div className="mt-6 divide-y divide-slate-100">
-            {product.specifications.map(([label, value]) => (
+            {(product.specifications ?? []).map(([label, value]) => (
               <p
                 key={label}
                 className="py-4 text-sm leading-6 text-slate-600 sm:text-base"

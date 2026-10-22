@@ -7,6 +7,7 @@ import laptopImage from "../../assets/Laptop.jpg";
 import cpuImage from "../../assets/CPU.jpg";
 import gpuImage from "../../assets/GPU.jpg";
 import { BadgeCheck, Truck, ShieldCheck, Cpu, Headset,} from "lucide-react";
+import { Link } from "react-router-dom";
 
 const products = [
   {
@@ -83,9 +84,12 @@ function LandingPage() {
                 life.
               </p>
 
-              <button className="mt-6 rounded-md bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
+              <Link
+                to="/components"
+                className="mt-6 inline-block rounded-md bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
                 Browse Products
-              </button>
+              </Link>
             </div>
           </div>
         </div>
@@ -140,6 +144,7 @@ function LandingPage() {
                 title="Desktops"
                 subtitle="Ultimate PCs for Professionals"
                 className="h-full"
+                to="/desktop"
             />
 
             {/* RIGHT SIDE */}
@@ -149,18 +154,21 @@ function LandingPage() {
                 image={laptopImage}
                 title="Laptops"
                 className="col-span-2"
+                to="/laptop"
                 />
 
                 {/* CPU */}
                 <CategoryCard
                 image={cpuImage}
                 title="CPUs"
+                to="/components?category=CPUs"
                 />
 
                 {/* GPU */}
                 <CategoryCard
                 image={gpuImage}
                 title="GPUs"
+                to="/components?category=GPUs"
                 />
             </div>
             </div>
@@ -223,18 +231,21 @@ function TrustItem({ icon: Icon, title, text }) {
 }
 
 
-/*  CATEGORY CARD  */
 
+/* CATEGORY CARD */
 function CategoryCard({
   image,
   title,
   subtitle,
-  large = false,
   className = "",
+  to,
 }) {
+  const Wrapper = to ? Link : "div";
+
   return (
-    <div
-      className={`group relative overflow-hidden rounded-lg ${className}`}
+    <Wrapper
+      to={to}
+      className={`group relative block overflow-hidden rounded-lg ${className}`}
     >
       <img
         src={image}
@@ -245,7 +256,9 @@ function CategoryCard({
       <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
       <div className="absolute bottom-5 left-5 text-white">
-        <h3 className="text-xl font-bold sm:text-2xl">{title}</h3>
+        <h3 className="text-xl font-bold sm:text-2xl">
+          {title}
+        </h3>
 
         {subtitle && (
           <p className="mt-1 text-xs text-gray-200">
@@ -253,7 +266,7 @@ function CategoryCard({
           </p>
         )}
       </div>
-    </div>
+    </Wrapper>
   );
 }
 

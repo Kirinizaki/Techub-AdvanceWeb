@@ -1,5 +1,5 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   SlidersHorizontal,
   ChevronDown,
@@ -15,22 +15,31 @@ import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
 import ProductCard from "../../components/customer/ProductCard";
-import { products } from "../../data/products";
+import { 
+  getProducts,
+  getCategories,
+  getBrands, 
+} from "../../services/productService";
 
-const categories = [
-  { name: "Processors", count: 24 },
-  { name: "Graphics Cards", count: 18 },
-  { name: "Motherboards", count: 16 },
-  { name: "Memory", count: 12 },
-  { name: "Storage", count: 20 },
-  { name: "Power Supply", count: 10 },
-  { name: "Cooling Systems", count: 14 },
-];
-
-const brands = ["Intel", "AMD", "NVIDIA", "ASUS", "Corsair", "Samsung"];
 
 function ProductsPage() {
+
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [error, setError] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryFromUrl = searchParams.get("category");
+  const [selectedBrands, setSelectedBrands] = useState([]);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState("featured");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const productsPerPage = 8;
   const [expanded, setExpanded] = useState({
     categories: true,
     price: true,
@@ -39,11 +48,149 @@ function ProductsPage() {
   });
 
   const toggleSection = (section) => {
-    setExpanded((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
+      setExpanded((prev) => ({
+        ...prev,
+        [section]: !prev[section],
+      }));
+    };
+    
+  useEffect(() => {
+    if (!categoryFromUrl) {
+      setSelectedCategories([]);
+      return;
+    }
+
+    const matchingCategory = categories.find(
+      (category) =>
+        category.name.toLowerCase() === categoryFromUrl.toLowerCase()
+    );
+
+    setSelectedCategories(
+      matchingCategory ? [matchingCategory.name] : []
+    );
+  }, [categoryFromUrl, categories]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    selectedCategories,
+    selectedBrands,
+    minPrice,
+    maxPrice,
+    inStockOnly,
+    sortBy,
+  ]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalog() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [productData, categoryData, brandData] = await Promise.all([
+          getProducts("component"),
+          getCategories(),
+          getBrands(),
+        ]);
+
+        console.table(
+          productData.map((product) => ({
+            name: product.name,
+            productType: product.productType,
+            category: product.category,
+          }))
+        );
+
+        if (cancelled) return;
+
+        setProducts(productData);
+        setCategories(categoryData);
+        setBrands(brandData);
+      } catch (err) {
+        console.error("Error loading components catalog:", err);
+
+        if (!cancelled) {
+          setError("Unable to load components. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  
+  
+const filteredProducts = products
+  .filter((product) => {
+    const matchesCategory =
+      selectedCategories.length === 0 ||
+      selectedCategories.includes(product.category);
+
+    const matchesBrand =
+      selectedBrands.length === 0 ||
+      selectedBrands.includes(product.brand);
+
+    const matchesMinPrice =
+      minPrice === "" || product.price >= Number(minPrice);
+
+    const matchesMaxPrice =
+      maxPrice === "" || product.price <= Number(maxPrice);
+
+    const matchesAvailability =
+      !inStockOnly || product.stock === "In Stock";
+
+    return (
+      matchesCategory &&
+      matchesBrand &&
+      matchesMinPrice &&
+      matchesMaxPrice &&
+      matchesAvailability
+    );
+  })
+  .sort((a, b) => {
+    switch (sortBy) {
+      case "price-low":
+        return a.price - b.price;
+      case "price-high":
+        return b.price - a.price;
+      case "name":
+        return a.name.localeCompare(b.name);
+      default:
+        return 0;
+    }
+  });
+
+  
+  const totalPages = Math.ceil(
+    filteredProducts.length / productsPerPage
+  );
+
+  const startIndex = (currentPage - 1) * productsPerPage;
+
+  const paginatedProducts = filteredProducts.slice(
+    startIndex,
+    startIndex + productsPerPage
+  );
+
+  const startItem =
+    filteredProducts.length === 0 ? 0 : startIndex + 1;
+
+  const endItem = Math.min(
+    startIndex + productsPerPage,
+    filteredProducts.length
+  );
+
 
   return (
     <div className="min-h-screen bg-[#F6F8FC] font-sans text-slate-900">
@@ -84,7 +231,9 @@ function ProductsPage() {
               All Components
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Showing {products.length} sample products
+              {loading
+                ? "Loading components..."
+                : `Showing ${startItem}–${endItem} of ${filteredProducts.length} products`}
             </p>
           </div>
 
@@ -140,23 +289,45 @@ function ProductsPage() {
               onToggle={() => toggleSection("categories")}
             >
               <div className="space-y-1">
-                {categories.map((category) => (
-                  <label
-                    key={category.name}
-                    className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-2 text-xs text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
-                  >
-                    <span className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="accent-blue-600"
-                      />
-                      {category.name}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      {category.count}
-                    </span>
-                  </label>
-                ))}
+                {categories
+                  .filter(
+                    (category) =>
+                      !["laptops", "desktops"].includes(
+                        category.name.trim().toLowerCase()
+                      )
+                  )
+                  .map((category) => {
+                    const count = products.filter(
+                      (product) => product.category === category.name
+                    ).length;
+
+                    return (
+                      <label
+                        key={category.id}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-2 text-xs text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={selectedCategories.includes(category.name)}
+                            onChange={(event) => {
+                              setSelectedCategories((current) =>
+                                event.target.checked
+                                  ? [...current, category.name]
+                                  : current.filter((name) => name !== category.name)
+                              );
+                            }}
+                          />
+
+                          {category.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {count}
+                        </span>
+                      </label>
+                    );
+                  })}
               </div>
             </FilterSection>
 
@@ -172,6 +343,8 @@ function ProductsPage() {
                   <input
                     type="number"
                     placeholder="0"
+                    value={minPrice}
+                    onChange={(event) => setMinPrice(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-xs outline-none focus:border-blue-500"
                   />
                 </label>
@@ -180,7 +353,9 @@ function ProductsPage() {
                   Maximum (₱)
                   <input
                     type="number"
-                    placeholder="100000"
+                    placeholder="0"
+                    value={maxPrice}
+                    onChange={(event) => setMaxPrice(event.target.value)}
                     className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-xs outline-none focus:border-blue-500"
                   />
                 </label>
@@ -196,14 +371,23 @@ function ProductsPage() {
               <div className="space-y-3">
                 {brands.map((brand) => (
                   <label
-                    key={brand}
+                    key={brand.id}
                     className="flex cursor-pointer items-center gap-2 text-xs text-slate-600"
                   >
                     <input
                       type="checkbox"
                       className="accent-blue-600"
+                      checked={selectedBrands.includes(brand.name)}
+                      onChange={(event) => {
+                        setSelectedBrands((current) =>
+                          event.target.checked
+                            ? [...current, brand.name]
+                            : current.filter((name) => name !== brand.name)
+                        );
+                      }}
                     />
-                    {brand}
+
+                    {brand.name}
                   </label>
                 ))}
               </div>
@@ -216,27 +400,32 @@ function ProductsPage() {
               onToggle={() => toggleSection("availability")}
             >
               <div className="space-y-3">
-                {["In Stock", "Out of Stock"].map((status) => (
+                {["In Stock"].map((status) => (
                   <label
                     key={status}
                     className="flex cursor-pointer items-center gap-2 text-xs text-slate-600"
-                  >
+                  >            
                     <input
                       type="checkbox"
                       className="accent-blue-600"
+                      checked={
+                        status === "In Stock"
+                          ? inStockOnly
+                          : false
+                      }
+                      onChange={(event) => {
+                        if (status === "In Stock") {
+                          setInStockOnly(event.target.checked);
+                        }
+                      }}
                     />
+                    
                     {status}
                   </label>
                 ))}
               </div>
             </FilterSection>
 
-            <button
-              type="button"
-              className="mt-5 w-full rounded-lg bg-slate-950 py-3 text-xs font-semibold text-white transition hover:bg-blue-600"
-            >
-              Apply Filters
-            </button>
           </aside>
 
           {/* Products area */}
@@ -254,13 +443,14 @@ function ProductsPage() {
                   <ArrowUpDown size={15} />
                   <span className="hidden sm:inline">Sort by</span>
                   <select
-                    defaultValue="featured"
+                    value={sortBy}
+                    onChange={(event) => setSortBy(event.target.value)}
                     className="max-w-36 rounded-md border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 outline-none focus:border-blue-500"
                   >
                     <option value="featured">Featured</option>
                     <option value="price-low">Price: Low to High</option>
                     <option value="price-high">Price: High to Low</option>
-                    <option value="name">Name</option>
+                    <option value="name">Name: A to Z</option>
                   </select>
                 </label>
 
@@ -282,52 +472,98 @@ function ProductsPage() {
               </div>
             </div>
 
+            
+            
             {/* Product grid */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+                <p className="mt-4 text-sm text-slate-500">
+                  Loading components...
+                </p>
+              </div>
+            ) : error ? (
+              <div className="rounded-xl border border-red-200 bg-white p-10 text-center">
+                <p className="text-sm text-red-600">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-600"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-10 text-center">
+                <p className="text-sm font-semibold text-slate-700">
+                  {products.length === 0
+                    ? "No products available yet."
+                    : "No products match your filters."}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {products.length === 0
+                    ? "Products will appear here once they are added to the catalog."
+                    : "Try adjusting your filters or price range to see more products."}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                {paginatedProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            )}
 
-            {/* Pagination preview */}
-            <div className="mt-8 flex items-center justify-center gap-2">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400"
-              >
-                Previous
-              </button>
 
-              <button
-                type="button"
-                aria-current="page"
-                className="rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white"
+            
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <nav
+                aria-label="Product pagination"
+                className="mt-8 flex flex-wrap items-center justify-center gap-2"
               >
-                1
-              </button>
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
 
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-600"
-              >
-                2
-              </button>
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+                  (page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      aria-current={currentPage === page ? "page" : undefined}
+                      onClick={() => setCurrentPage(page)}
+                      className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+                        currentPage === page
+                          ? "bg-blue-600 text-white"
+                          : "border border-slate-200 bg-white text-slate-600 hover:border-blue-500"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                )}
 
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-600"
-              >
-                3
-              </button>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </nav>
+            )}
 
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"
-              >
-                Next
-              </button>
-            </div>
           </section>
         </div>
       </main>

@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   SlidersHorizontal,
   ChevronDown,
@@ -14,133 +14,13 @@ import Navbar from "../../components/layout/Navbar";
 import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
 import ProductCard from "../../components/customer/ProductCard";
-
-const desktopProducts = [
-  {
-    id: 101,
-    name: "Techub Apex Gaming PC",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 54999,
-    oldPrice: 59999,
-    image: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7",
-    badge: "Best Seller",
-    stock: true,
-    cpu: "AMD Ryzen 5",
-    gpu: "RTX 4060",
-  },
-  {
-    id: 102,
-    name: "Techub Phantom Gaming PC",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 72999,
-    oldPrice: 79999,
-    image: "https://images.unsplash.com/photo-1593640408182-31c70c8268f5",
-    badge: "Popular",
-    stock: true,
-    cpu: "AMD Ryzen 7",
-    gpu: "RTX 4070",
-  },
-  {
-    id: 103,
-    name: "Techub Starter Gaming PC",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 32999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1587202372634-32705e3bf49c",
-    badge: "Budget Pick",
-    stock: true,
-    cpu: "AMD Ryzen 5",
-    gpu: "RTX 3050",
-  },
-  {
-    id: 104,
-    name: "Techub Creator Workstation",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 89999,
-    oldPrice: 94999,
-    image: "https://images.unsplash.com/photo-1593640495253-23196b27a87f",
-    badge: "Creator",
-    stock: false,
-    cpu: "Intel Core i7",
-    gpu: "RTX 4070",
-  },
-  {
-    id: 105,
-    name: "Techub Elite Gaming PC",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 119999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7",
-    badge: "High Performance",
-    stock: true,
-    cpu: "AMD Ryzen 7",
-    gpu: "RTX 4080",
-  },
-  {
-    id: 106,
-    name: "Techub Office Desktop",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 24999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1593640408182-31c70c8268f5",
-    badge: null,
-    stock: true,
-    cpu: "Intel Core i5",
-    gpu: "Integrated",
-  },
-  {
-    id: 107,
-    name: "Techub Performance Gaming PC",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 64999,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7",
-    badge: null,
-    stock: true,
-    cpu: "Intel Core i5",
-    gpu: "RTX 4060",
-  },
-  {
-    id: 108,
-    name: "Techub Ultimate Workstation",
-    category: "Pre-built Desktop",
-    brand: "Techub",
-    price: 99999,
-    oldPrice: 109999,
-    image: "https://images.unsplash.com/photo-1593640495253-23196b27a87f",
-    badge: "Premium",
-    stock: true,
-    cpu: "Intel Core i7",
-    gpu: "RTX 4070",
-  },
-];
-
-const processors = [
-  "AMD Ryzen 5",
-  "AMD Ryzen 7",
-  "Intel Core i5",
-  "Intel Core i7",
-];
-
-const graphicsCards = [
-  "RTX 3050",
-  "RTX 4060",
-  "RTX 4070",
-  "RTX 4080",
-  "Integrated",
-];
-
-const brands = ["Techub"];
+import { getProducts } from "../../services/productService";
 
 function DesktopPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopProducts, setDesktopProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const [expanded, setExpanded] = useState({
     processor: true,
@@ -159,6 +39,46 @@ function DesktopPage() {
   const [sortBy, setSortBy] = useState("featured");
   const [viewMode, setViewMode] = useState("grid");
 
+  const processors = useMemo(() => {
+    return [
+      ...new Set(
+        desktopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Processor"
+              )?.[1]
+          )
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [desktopProducts]);
+
+  const graphicsCards = useMemo(() => {
+    return [
+      ...new Set(
+        desktopProducts
+          .map(
+            (product) =>
+              product.specifications?.find(
+                ([label]) => label === "Graphics"
+              )?.[1]
+          )
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [desktopProducts]);
+
+  const brands = useMemo(() => {
+    return [
+      ...new Set(
+        desktopProducts
+          .map((product) => product.brand)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [desktopProducts]);
+
   const toggleSection = (section) => {
     setExpanded((prev) => ({
       ...prev,
@@ -174,30 +94,71 @@ function DesktopPage() {
     );
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDesktops() {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const products = await getProducts("desktop");
+
+        if (!cancelled) {
+          setDesktopProducts(products);
+        }
+      } catch (error) {
+        console.error("Error loading desktops:", error);
+
+        if (!cancelled) {
+          setLoadError("Unable to load desktop PCs. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadDesktops();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const filteredProducts = useMemo(() => {
     let result = desktopProducts.filter((product) => {
+      const cpu = product.specifications?.find(
+        ([label]) => label === "Processor"
+      )?.[1];
+
+      const gpu = product.specifications?.find(
+        ([label]) => label === "Graphics"
+      )?.[1];
+
       const matchesCPU =
-        selectedCPUs.length === 0 ||
-        selectedCPUs.includes(product.cpu);
+        selectedCPUs.length === 0 || selectedCPUs.includes(cpu);
 
       const matchesGPU =
-        selectedGPUs.length === 0 ||
-        selectedGPUs.includes(product.gpu);
+        selectedGPUs.length === 0 || selectedGPUs.includes(gpu);
 
       const matchesBrand =
         selectedBrands.length === 0 ||
         selectedBrands.includes(product.brand);
 
       const matchesMin =
-        minPrice === "" || product.price >= Number(minPrice);
+        minPrice === "" || Number(product.price) >= Number(minPrice);
 
       const matchesMax =
-        maxPrice === "" || product.price <= Number(maxPrice);
+        maxPrice === "" || Number(product.price) <= Number(maxPrice);
 
       const matchesAvailability =
         availability.length === 0 ||
         availability.some((status) =>
-          status === "In Stock" ? product.stock : !product.stock
+          status === "In Stock"
+            ? Number(product.stockQuantity) > 0
+            : Number(product.stockQuantity) <= 0
         );
 
       return (
@@ -222,6 +183,7 @@ function DesktopPage() {
 
     return result;
   }, [
+    desktopProducts,
     selectedCPUs,
     selectedGPUs,
     selectedBrands,
@@ -230,6 +192,7 @@ function DesktopPage() {
     maxPrice,
     sortBy,
   ]);
+
 
   const clearFilters = () => {
     setSelectedCPUs([]);
@@ -538,8 +501,20 @@ function DesktopPage() {
               </div>
             </div>
 
+            
             {/* Product grid */}
-            {filteredProducts.length > 0 ? (
+            {loading ? (
+              <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+                <p className="mt-4 text-sm text-slate-500">
+                  Loading desktop PCs...
+                </p>
+              </div>
+            ) : loadError ? (
+              <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">
+                <p className="text-red-600">{loadError}</p>
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div
                 className={
                   viewMode === "grid"
@@ -554,13 +529,11 @@ function DesktopPage() {
             ) : (
               <div className="rounded-xl border border-slate-200 bg-white px-5 py-16 text-center">
                 <h3 className="font-heading text-lg font-bold">
-                  No desktop PCs found
+                  No Desktop PCs found
                 </h3>
-
                 <p className="mt-2 text-sm text-slate-500">
                   Try changing your filters to see more results.
                 </p>
-
                 <button
                   type="button"
                   onClick={clearFilters}
