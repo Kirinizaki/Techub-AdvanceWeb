@@ -4,9 +4,6 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronRight,
-  Search,
-  LayoutGrid,
-  List,
   X,
   ArrowUpDown,
 } from "lucide-react";
@@ -39,7 +36,16 @@ function ProductsPage() {
   const [sortBy, setSortBy] = useState("featured");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 8;
+  const [specFiltersOpen, setSpecFiltersOpen] = useState(false);
+  const [selectedSpecifications, setSelectedSpecifications] = useState({});
+  const [gridColumns, setGridColumns] = useState(() => {
+    if (typeof window === "undefined") return 4;
+    if (window.innerWidth >= 1280) return 4;
+    if (window.innerWidth >= 1024) return 3;
+    if (window.innerWidth >= 420) return 2;
+    return 1;
+  });
+  const productsPerPage = gridColumns * 3;
   const [expanded, setExpanded] = useState({
     categories: true,
     price: true,
@@ -55,6 +61,26 @@ function ProductsPage() {
     };
     
   useEffect(() => {
+    const updateGridColumns = () => {
+      const width = window.innerWidth;
+      const nextColumns = width >= 1280 ? 4 : width >= 1024 ? 3 : width >= 420 ? 2 : 1;
+
+      setGridColumns((currentColumns) => {
+        if (currentColumns !== nextColumns) {
+          setCurrentPage(1);
+        }
+        return nextColumns;
+      });
+    };
+
+    window.addEventListener("resize", updateGridColumns);
+    updateGridColumns();
+
+    return () => window.removeEventListener("resize", updateGridColumns);
+  }, []);
+
+  useEffect(() => {
+    setSelectedSpecifications({});
     if (!categoryFromUrl) {
       setSelectedCategories([]);
       return;
@@ -79,6 +105,7 @@ function ProductsPage() {
     maxPrice,
     inStockOnly,
     sortBy,
+    selectedSpecifications,
   ]);
 
 
@@ -95,14 +122,6 @@ function ProductsPage() {
           getCategories(),
           getBrands(),
         ]);
-
-        console.table(
-          productData.map((product) => ({
-            name: product.name,
-            productType: product.productType,
-            category: product.category,
-          }))
-        );
 
         if (cancelled) return;
 
@@ -131,45 +150,151 @@ function ProductsPage() {
 
   
   
-const filteredProducts = products
-  .filter((product) => {
-    const matchesCategory =
-      selectedCategories.length === 0 ||
-      selectedCategories.includes(product.category);
+const selectedCategory = selectedCategories.length === 1 ? selectedCategories[0] : null;
 
-    const matchesBrand =
-      selectedBrands.length === 0 ||
-      selectedBrands.includes(product.brand);
+  // Keep the specification popup focused on a small set of useful filters per category.
+  // Each spec filter maps to the labels used by the product specifications in Supabase.
+  const specificationFilterConfig = {
+    "CPUs": [
+      { key: "__manufacturer", label: "Manufacturer", source: "brand" },
+      { key: "__family", label: "Product Family", labels: ["product family", "family", "series", "processor family", "cpu family"] },
+      { key: "__socket", label: "Socket Type", labels: ["socket", "socket type", "cpu socket"] },
+    ],
+    "Graphics Cards": [
+      { key: "__manufacturer", label: "Manufacturer", source: "brand" },
+      { key: "__gpuFamily", label: "GPU Family", labels: ["gpu family", "graphics processor", "chipset", "gpu", "graphics chipset"] },
+      { key: "__vram", label: "VRAM", labels: ["vram", "memory size", "graphics memory", "video memory"] },
+    ],
+    "Motherboards": [
+      { key: "__manufacturer", label: "Manufacturer", source: "brand" },
+      { key: "__socket", label: "Socket Type", labels: ["socket", "socket type", "cpu socket"] },
+      { key: "__formFactor", label: "Form Factor", labels: ["form factor", "motherboard form factor", "board size"] },
+    ],
+    "Memory (RAM)": [
+      { key: "__memoryType", label: "Memory Type", labels: ["memory type", "ram type", "type", "generation"] },
+      { key: "__capacity", label: "Capacity", labels: ["capacity", "total capacity", "memory capacity", "size"] },
+      { key: "__speed", label: "Speed", labels: ["speed", "memory speed", "data rate", "frequency"] },
+    ],
+    "Storage": [
+      { key: "__driveType", label: "Drive Type", labels: ["storage type", "drive type", "type", "form factor", "interface"] },
+      { key: "__capacity", label: "Capacity", labels: ["capacity", "storage capacity", "size"] },
+    ],
+    "CPU Coolers": [
+      { key: "__coolerType", label: "Cooler Type", labels: ["cooler type", "cooling type", "type"] },
+      { key: "__socket", label: "Socket Compatibility", labels: ["socket compatibility", "supported socket", "socket", "cpu socket"] },
+    ],
+    "Power Supplies": [
+      { key: "__wattage", label: "Wattage", labels: ["wattage", "power output", "total power", "output power"] },
+      { key: "__modularity", label: "Modularity", labels: ["modularity", "modular"] },
+      { key: "__formFactor", label: "Form Factor", labels: ["form factor", "psu form factor"] },
+    ],
+    "PC Cases": [
+      { key: "__caseFormFactor", label: "Case Form Factor", labels: ["case form factor", "form factor", "case type"] },
+      { key: "__motherboardSupport", label: "Motherboard Compatibility", labels: ["supported motherboard sizes", "motherboard support", "motherboard compatibility", "motherboard form factor"] },
+    ],
+  };
 
-    const matchesMinPrice =
-      minPrice === "" || product.price >= Number(minPrice);
+  const specificationOptions = (() => {
+    if (!selectedCategory) return [];
 
-    const matchesMaxPrice =
-      maxPrice === "" || product.price <= Number(maxPrice);
+    const config = specificationFilterConfig[selectedCategory] || [];
+    const categoryProducts = products.filter((product) => product.category === selectedCategory);
+    const normalize = (value) => String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
 
-    const matchesAvailability =
-      !inStockOnly || product.stock === "In Stock";
+    return config.map((filter) => {
+      const values = new Set();
 
-    return (
-      matchesCategory &&
-      matchesBrand &&
-      matchesMinPrice &&
-      matchesMaxPrice &&
-      matchesAvailability
-    );
-  })
-  .sort((a, b) => {
-    switch (sortBy) {
-      case "price-low":
-        return a.price - b.price;
-      case "price-high":
-        return b.price - a.price;
-      case "name":
-        return a.name.localeCompare(b.name);
-      default:
-        return 0;
-    }
-  });
+      categoryProducts.forEach((product) => {
+        if (filter.source === "brand") {
+          if (product.brand && String(product.brand).trim()) values.add(String(product.brand).trim());
+          return;
+        }
+
+        (product.specifications || []).forEach((item) => {
+          if (!Array.isArray(item) || item.length < 2) return;
+          const label = normalize(item[0]);
+          const value = String(item[1] ?? "").trim();
+          const matchesLabel = filter.labels?.some((candidate) =>
+            label === candidate || label.includes(candidate)
+          );
+          if (matchesLabel && value && value !== "—" && value.toLowerCase() !== "n/a") {
+            values.add(value);
+          }
+        });
+      });
+
+      return {
+        key: filter.key,
+        label: filter.label,
+        source: filter.source || "specification",
+        values: [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      };
+    }).filter((filter) => filter.values.length > 1);
+  })();
+
+  const filteredProducts = products
+    .filter((product) => {
+      const matchesCategory =
+        selectedCategories.length === 0 ||
+        selectedCategories.includes(product.category);
+
+      const matchesBrand =
+        selectedBrands.length === 0 ||
+        selectedBrands.includes(product.brand);
+
+      const matchesMinPrice =
+        minPrice === "" || product.price >= Number(minPrice);
+
+      const matchesMaxPrice =
+        maxPrice === "" || product.price <= Number(maxPrice);
+
+      const matchesAvailability =
+        !inStockOnly || product.stock === "In Stock";
+
+      const matchesSpecifications = Object.entries(selectedSpecifications).every(
+        ([filterKey, selectedValue]) => {
+          if (!selectedValue) return true;
+          if (filterKey === "__manufacturer") {
+            return String(product.brand || "").trim() === selectedValue;
+          }
+
+          const config = (specificationFilterConfig[selectedCategory] || []).find(
+            (filter) => filter.key === filterKey
+          );
+          if (!config) return true;
+          const normalize = (value) => String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ");
+          return (product.specifications || []).some((item) => {
+            if (!Array.isArray(item) || item.length < 2) return false;
+            const label = normalize(item[0]);
+            const matchesLabel = config.labels?.some((candidate) =>
+              label === candidate || label.includes(candidate)
+            );
+            return matchesLabel && String(item[1]).trim() === selectedValue;
+          });
+        }
+      );
+
+      return (
+        matchesCategory &&
+        matchesBrand &&
+        matchesMinPrice &&
+        matchesMaxPrice &&
+        matchesAvailability &&
+        matchesSpecifications
+      );
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "price-low":
+          return a.price - b.price;
+        case "price-high":
+          return b.price - a.price;
+        case "name":
+          return a.name.localeCompare(b.name);
+        default:
+          return 0;
+      }
+    });
 
   
   const totalPages = Math.ceil(
@@ -267,11 +392,8 @@ const filteredProducts = products
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={17} />
-                <h2 className="font-heading text-sm font-bold">
-                  Filters
-                </h2>
+                <h2 className="font-heading text-sm font-bold">Filters</h2>
               </div>
-
               <button
                 type="button"
                 onClick={() => setSidebarOpen(false)}
@@ -296,6 +418,23 @@ const filteredProducts = products
                         category.name.trim().toLowerCase()
                       )
                   )
+                  .sort((a, b) => {
+                    const categoryOrder = [
+                      "CPUs",
+                      "Motherboards",
+                      "Graphics Cards",
+                      "Memory (RAM)",
+                      "Storage",
+                      "CPU Coolers",
+                      "Power Supplies",
+                      "PC Cases",
+                    ];
+                    const aIndex = categoryOrder.indexOf(a.name);
+                    const bIndex = categoryOrder.indexOf(b.name);
+                    const safeA = aIndex === -1 ? categoryOrder.length : aIndex;
+                    const safeB = bIndex === -1 ? categoryOrder.length : bIndex;
+                    return safeA - safeB || a.name.localeCompare(b.name);
+                  })
                   .map((category) => {
                     const count = products.filter(
                       (product) => product.category === category.name
@@ -312,6 +451,7 @@ const filteredProducts = products
                             className="accent-blue-600"
                             checked={selectedCategories.includes(category.name)}
                             onChange={(event) => {
+                              setSelectedSpecifications({});
                               setSelectedCategories((current) =>
                                 event.target.checked
                                   ? [...current, category.name]
@@ -431,14 +571,32 @@ const filteredProducts = products
           {/* Products area */}
           <section className="min-w-0 flex-1">
             {/* Toolbar */}
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:px-4">
+            <div className="relative mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:px-4">
               <p className="text-xs text-slate-500">
-                Browse our <span className="font-semibold text-slate-900">
-                  PC components
-                </span>
+                Browse our <span className="font-semibold text-slate-900">PC components</span>
               </p>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSpecFiltersOpen((open) => !open)}
+                  aria-expanded={specFiltersOpen}
+                  aria-haspopup="dialog"
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium transition ${
+                    specFiltersOpen
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
+                  }`}
+                >
+                  <SlidersHorizontal size={15} />
+                  Specifications
+                  {Object.values(selectedSpecifications).filter(Boolean).length > 0 && (
+                    <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">
+                      {Object.values(selectedSpecifications).filter(Boolean).length}
+                    </span>
+                  )}
+                </button>
+
                 <label className="flex items-center gap-2 text-xs text-slate-500">
                   <ArrowUpDown size={15} />
                   <span className="hidden sm:inline">Sort by</span>
@@ -453,27 +611,96 @@ const filteredProducts = products
                     <option value="name">Name: A to Z</option>
                   </select>
                 </label>
-
-                <button
-                  type="button"
-                  aria-label="Grid view"
-                  className="hidden rounded-md bg-blue-50 p-2 text-blue-600 sm:block"
-                >
-                  <LayoutGrid size={17} />
-                </button>
-
-                <button
-                  type="button"
-                  aria-label="List view"
-                  className="hidden rounded-md p-2 text-slate-400 hover:bg-slate-100 sm:block"
-                >
-                  <List size={17} />
-                </button>
               </div>
+
+              {specFiltersOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Close specification filters"
+                    onClick={() => setSpecFiltersOpen(false)}
+                    className="fixed inset-0 z-30 cursor-default bg-transparent"
+                  />
+                  <div
+                    role="dialog"
+                    aria-label="Specification filters"
+                    className="absolute right-0 top-full z-40 mt-2 w-[min(380px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-5 shadow-xl"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900">Specification Filters</h3>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          {selectedCategory
+                            ? `Narrow down ${selectedCategory} by its specifications.`
+                            : "Select one category in the sidebar to see relevant specifications."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSpecFiltersOpen(false)}
+                        aria-label="Close specification filters"
+                        className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {!selectedCategory ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                        Choose exactly one category, such as Storage or CPUs, to show matching filters.
+                      </p>
+                    ) : specificationOptions.length === 0 ? (
+                      <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                        No varying specification options were found for this category. Check that its products have specification values saved in the database.
+                      </p>
+                    ) : (
+                      <div className="mt-4 max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+                        {specificationOptions.map(({ key, label, values }) => (
+                          <label key={key} className="block">
+                            <span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>
+                            <select
+                              value={selectedSpecifications[key] || ""}
+                              onChange={(event) =>
+                                setSelectedSpecifications((current) => ({
+                                  ...current,
+                                  [key]: event.target.value,
+                                }))
+                              }
+                              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-blue-500"
+                            >
+                              <option value="">Any {label}</option>
+                              {values.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {Object.values(selectedSpecifications).some(Boolean) && (
+                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSpecifications({})}
+                          className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                        >
+                          Clear filters
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSpecFiltersOpen(false)}
+                          className="rounded-lg bg-slate-950 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-600"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
-            
-            
             {/* Product grid */}
             {loading ? (
               <div className="rounded-xl border border-slate-200 bg-white py-16 text-center">

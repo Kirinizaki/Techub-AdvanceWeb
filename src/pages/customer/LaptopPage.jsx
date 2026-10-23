@@ -4,8 +4,6 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronRight,
-  LayoutGrid,
-  List,
   X,
   ArrowUpDown,
 } from "lucide-react";
@@ -42,7 +40,15 @@ function LaptopPage() {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortBy, setSortBy] = useState("featured");
-  const [viewMode, setViewMode] = useState("grid");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [gridColumns, setGridColumns] = useState(() => {
+    if (typeof window === "undefined") return 4;
+    if (window.innerWidth >= 1280) return 4;
+    if (window.innerWidth >= 1024) return 3;
+    if (window.innerWidth >= 420) return 2;
+    return 1;
+  });
+  const productsPerPage = gridColumns * 3;
 
   const laptopTypes = useMemo(
     () =>
@@ -162,6 +168,26 @@ function LaptopPage() {
     };
   }, []);
   
+  useEffect(() => {
+    const updateGridColumns = () => {
+      const width = window.innerWidth;
+      const nextColumns =
+        width >= 1280 ? 4 : width >= 1024 ? 3 : width >= 420 ? 2 : 1;
+
+      setGridColumns((currentColumns) => {
+        if (currentColumns !== nextColumns) {
+          setCurrentPage(1);
+        }
+        return nextColumns;
+      });
+    };
+
+    window.addEventListener("resize", updateGridColumns);
+    updateGridColumns();
+
+    return () => window.removeEventListener("resize", updateGridColumns);
+  }, []);
+
   const filteredProducts = useMemo(() => {
     let result = laptopProducts.filter((product) => {
       const laptopType = product.specifications?.find(
@@ -255,6 +281,29 @@ function LaptopPage() {
     maxPrice,
     sortBy,
   ]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    selectedTypes,
+    selectedCPUs,
+    selectedGPUs,
+    selectedRAM,
+    selectedBrands,
+    availability,
+    minPrice,
+    maxPrice,
+    sortBy,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / productsPerPage));
+  const startIndex = (currentPage - 1) * productsPerPage;
+  const paginatedProducts = filteredProducts.slice(
+    startIndex,
+    startIndex + productsPerPage
+  );
+  const startItem = filteredProducts.length === 0 ? 0 : startIndex + 1;
+  const endItem = Math.min(startIndex + productsPerPage, filteredProducts.length);
 
   const clearFilters = () => {
     setSelectedTypes([]);
@@ -509,7 +558,7 @@ function LaptopPage() {
             <p className="mt-1 text-xs text-slate-500">
               {loading
                 ? "Loading laptops..."
-                : `Showing ${filteredProducts.length} laptops`}
+                : `Showing ${startItem}–${endItem} of ${filteredProducts.length} laptops`}
             </p>
           </div>
 
@@ -587,33 +636,6 @@ function LaptopPage() {
                   </select>
                 </label>
 
-                <button
-                  type="button"
-                  onClick={() => setViewMode("grid")}
-                  aria-label="Grid view"
-                  aria-pressed={viewMode === "grid"}
-                  className={`hidden rounded-md p-2 sm:block ${
-                    viewMode === "grid"
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-slate-400 hover:bg-slate-100"
-                  }`}
-                >
-                  <LayoutGrid size={17} />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode("list")}
-                  aria-label="List view"
-                  aria-pressed={viewMode === "list"}
-                  className={`hidden rounded-md p-2 sm:block ${
-                    viewMode === "list"
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-slate-400 hover:bg-slate-100"
-                  }`}
-                >
-                  <List size={17} />
-                </button>
               </div>
             </div>
 
@@ -657,14 +679,8 @@ function LaptopPage() {
                 </button>
               </div>
             ) : filteredProducts.length > 0 ? (
-              <div
-                className={
-                  viewMode === "grid"
-                    ? "grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4"
-                    : "grid grid-cols-1 gap-4"
-                }
-              >
-                {filteredProducts.map((product) => (
+              <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+                {paginatedProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>
@@ -684,6 +700,47 @@ function LaptopPage() {
                   Clear Filters
                 </button>
               </div>
+            )}
+
+            {!loading && !loadError && totalPages > 1 && (
+              <nav
+                aria-label="Laptop pagination"
+                className="mt-8 flex flex-wrap items-center justify-center gap-2"
+              >
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    aria-current={currentPage === page ? "page" : undefined}
+                    onClick={() => setCurrentPage(page)}
+                    className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition ${
+                      currentPage === page
+                        ? "bg-blue-600 text-white"
+                        : "border border-slate-200 bg-white text-slate-600 hover:border-blue-500"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 transition hover:border-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </nav>
             )}
           </section>
         </div>

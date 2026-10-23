@@ -8,6 +8,8 @@ import cpuImage from "../../assets/CPU.jpg";
 import gpuImage from "../../assets/GPU.jpg";
 import { BadgeCheck, Truck, ShieldCheck, Cpu, Headset,} from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { getProducts } from "../../services/productService";
 
 const products = [
   {
@@ -49,6 +51,44 @@ const products = [
 ];
 
 function LandingPage() {
+  const [products, setProducts] = useState([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productsError, setProductsError] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadFeaturedProducts() {
+      try {
+        setLoadingProducts(true);
+        setProductsError("");
+
+        const data = await getProducts("component");
+
+        if (!cancelled) {
+          setProducts(data);
+        }
+      } catch (error) {
+        console.error("Error loading featured products:", error);
+
+        if (!cancelled) {
+          setProductsError("Unable to load featured products.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProducts(false);
+        }
+      }
+    }
+
+    loadFeaturedProducts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -183,26 +223,61 @@ function LandingPage() {
               FEATURED PRODUCTS
             </h2>
 
-            <button className="text-sm font-medium text-blue-600 hover:underline">
+            <Link
+              to="/components"
+              className="text-sm font-medium text-blue-600 hover:underline"
+            >
               View All →
-            </button>
+            </Link>
           </div>
-
+          
           {/* Category filters */}
           <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
-            <FilterButton active>All</FilterButton>
-            <FilterButton>Processors</FilterButton>
-            <FilterButton>Graphics Cards</FilterButton>
-            <FilterButton>Motherboards</FilterButton>
-            <FilterButton>Memory</FilterButton>
-          </div>
-
-          {/* Products */}
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+            {[
+              { label: "All", value: "All" },
+              { label: "Processors", value: "CPUs" },
+              { label: "Graphics Cards", value: "Graphics Cards" },
+              { label: "Motherboards", value: "Motherboards" },
+              { label: "Memory", value: "Memory (RAM)" },
+            ].map((category) => (
+              <FilterButton
+                key={category.value}
+                active={activeCategory === category.value}
+                onClick={() => setActiveCategory(category.value)}
+              >
+                {category.label}
+              </FilterButton>
             ))}
           </div>
+     
+          {/* Products */}
+          {loadingProducts ? (
+            <p className="mt-5 py-10 text-center text-sm text-gray-500">
+              Loading featured products...
+            </p>
+          ) : productsError ? (
+            <p className="mt-5 py-10 text-center text-sm text-red-600">
+              {productsError}
+            </p>
+          ) : products.length === 0 ? (
+            <p className="mt-5 py-10 text-center text-sm text-gray-500">
+              No featured products available yet.
+            </p>
+          ) : (
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+              {products
+                .filter(
+                  (product) =>
+                    activeCategory === "All" ||
+                    product.category === activeCategory
+                )
+                .slice(0, 6)
+                .map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+            </div>
+          )}
+
         </div>
       </section>
 
@@ -272,10 +347,11 @@ function CategoryCard({
 
 
 /*  FILTER BUTTON  */
-
-function FilterButton({ children, active = false }) {
+function FilterButton({ children, active = false, onClick }) {
   return (
     <button
+      type="button"
+      onClick={onClick}
       className={`whitespace-nowrap rounded-md border px-4 py-1.5 text-xs font-medium transition ${
         active
           ? "border-blue-600 bg-blue-600 text-white"
@@ -289,7 +365,6 @@ function FilterButton({ children, active = false }) {
 
 
 /*  PRODUCT CARD  */
-
 function ProductCard({ product }) {
   return (
     <div className="group rounded-md border border-gray-300 bg-white p-2 transition hover:-translate-y-1 hover:shadow-md">
@@ -319,7 +394,7 @@ function ProductCard({ product }) {
         </h3>
 
         <p className="mt-2 text-xs font-bold text-blue-600">
-          {product.price}
+          ₱{Number(product.price).toLocaleString("en-PH")}
         </p>
 
         <button className="mt-2 w-full rounded border border-blue-500 py-1.5 text-[10px] font-semibold text-blue-600 transition hover:bg-blue-600 hover:text-white">
