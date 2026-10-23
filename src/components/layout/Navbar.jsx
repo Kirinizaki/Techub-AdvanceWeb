@@ -3,9 +3,16 @@ import logo from "../../assets/TechubLogo.png";
 import { NavLink } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useCart } from "../../context/CartContext";
 
 function Navbar() {
     const { user, loading } = useAuth();
+    const { cartItems } = useCart();
+
+    const cartCount = cartItems.reduce(
+    (total, item) => total + Number(item.quantity || 0),
+    0
+    );
 
     return (
         <header className="bg-[#0A1128] border-b-4 border-[#4b4f91]">
@@ -97,11 +104,17 @@ function Navbar() {
                     </div>
 
                     <Link
-                        to="/cart"
-                        aria-label="Open shopping cart"
-                        className="text-white hover:text-[#8ea7ff]"
+                    to="/cart"
+                    aria-label={`Open shopping cart, ${cartCount} items`}
+                    className="relative text-white transition-colors hover:text-[#8ea7ff]"
                     >
-                        <ShoppingCart size={27} className="cursor-pointer" />
+                    <ShoppingCart size={27} className="cursor-pointer" />
+
+                    {cartCount > 0 && (
+                        <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#0A1128]">
+                        {cartCount > 99 ? "99+" : cartCount}
+                        </span>
+                    )}
                     </Link>
 
                     <Link

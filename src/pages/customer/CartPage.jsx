@@ -324,19 +324,16 @@ function CartPage() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled
-                    title="Checkout will be connected later"
-                    className="mt-6 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3.5 text-sm font-semibold text-white opacity-70"
+                  <Link
+                    to="/checkout"
+                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                   >
                     Proceed to Checkout
                     <ArrowRight size={17} />
-                  </button>
+                  </Link>
 
                   <p className="mt-3 text-center text-[10px] leading-5 text-slate-400">
-                    Checkout will be available once payment and order
-                    processing are connected.
+                    Secure checkout with Cash on Delivery.
                   </p>
 
                   <Link

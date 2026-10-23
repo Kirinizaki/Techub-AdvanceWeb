@@ -1,16 +1,15 @@
-
 import { ShoppingCart, ArrowUpRight, ImageOff } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useCart } from "../../context/CartContext";
-
+import WishlistButton from "./WishlistButton";
 
 const formatPrice = (price) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0,
-  }).format(price);
+  }).format(Number(price) || 0);
 
 function ProductCard({ product }) {
   const [imageError, setImageError] = useState(false);
@@ -26,7 +25,6 @@ function ProductCard({ product }) {
           </span>
         )}
 
-        
         <Link
           to={`/product/${product.id}`}
           className="flex h-full w-full items-center justify-center"
@@ -41,21 +39,27 @@ function ProductCard({ product }) {
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-300">
               <ImageOff size={36} strokeWidth={1.5} />
-              <span className="text-xs text-slate-400">
-                Image unavailable
-              </span>
+              <span className="text-xs text-slate-400">Image unavailable</span>
             </div>
           )}
         </Link>
 
+        <div className="absolute right-3 top-3 z-10">
+          <WishlistButton
+            productId={product.id}
+            productName={product.name}
+            className="h-9 w-9 border shadow-sm"
+            size={17}
+          />
+        </div>
 
-        <button
-          type="button"
+        <Link
+          to={`/product/${product.id}`}
           aria-label={`View ${product.name}`}
           className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 opacity-100 shadow-sm transition hover:bg-blue-600 hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
         >
           <ArrowUpRight size={17} />
-        </button>
+        </Link>
       </div>
 
       <div className="flex flex-1 flex-col p-4">
@@ -63,22 +67,16 @@ function ProductCard({ product }) {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
             {product.brand}
           </span>
-
           <span
             className={`text-[10px] font-medium ${
-              product.stock === "In Stock"
-                ? "text-emerald-600"
-                : "text-red-500"
+              product.stock === "In Stock" ? "text-emerald-600" : "text-red-500"
             }`}
           >
             {product.stock}
           </span>
         </div>
 
-        <p className="mb-1 text-[10px] text-slate-400">
-          {product.category}
-        </p>
-
+        <p className="mb-1 text-[10px] text-slate-400">{product.category}</p>
         <h3 className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900">
           {product.name}
         </h3>
@@ -87,7 +85,6 @@ function ProductCard({ product }) {
           <span className="text-lg font-bold tracking-tight text-slate-950">
             {formatPrice(product.price)}
           </span>
-
           {product.oldPrice && (
             <span className="text-xs text-slate-400 line-through">
               {formatPrice(product.oldPrice)}

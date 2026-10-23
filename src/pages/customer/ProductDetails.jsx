@@ -20,6 +20,7 @@ import Footer from "../../components/layout/Footer";
 import ChatSupport from "../../components/customer/ChatSupport";
 import { getProducts } from "../../services/productService";
 import { useCart } from "../../context/CartContext";
+import WishlistButton from "../../components/customer/WishlistButton";
 
 const relatedProducts = [];
 
@@ -67,7 +68,6 @@ export default function ProductDetails() {
   }, [id]);
   
   const [quantity, setQuantity] = useState(1);
-  const [isWishlisted, setIsWishlisted] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
 
   const stock = Number(product?.stockQuantity ?? 0);
@@ -201,26 +201,12 @@ export default function ProductDetails() {
                 {product.category}
               </span>
 
-              <button
-                type="button"
-                onClick={() => setIsWishlisted((current) => !current)}
-                aria-label={
-                  isWishlisted
-                    ? "Remove from wishlist"
-                    : "Add to wishlist"
-                }
-                aria-pressed={isWishlisted}
-                className={`rounded-full border p-2.5 transition ${
-                  isWishlisted
-                    ? "border-rose-200 bg-rose-50 text-rose-500"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-rose-300 hover:text-rose-500"
-                }`}
-              >
-                <Heart
-                  size={20}
-                  fill={isWishlisted ? "currentColor" : "none"}
-                />
-              </button>
+              <WishlistButton
+                productId={product.id}
+                productName={product.name}
+                className="h-10 w-10 border"
+                size={20}
+              />
             </div>
 
             <p className="mb-2 text-sm font-medium text-slate-500">

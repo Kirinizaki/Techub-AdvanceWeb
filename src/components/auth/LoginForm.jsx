@@ -21,16 +21,7 @@ export default function LoginForm() {
     const identifier = username.trim();
 
     if (!identifier || !password) {
-      setErrorMessage("Please enter your email and password.");
-      return;
-    }
-
-    // Username-based login will be added through a secure
-    // server-side authentication flow. For now, use email.
-    if (!identifier.includes("@")) {
-      setErrorMessage(
-        "Username login is not configured yet. Please sign in using your email address for now."
-      );
+      setErrorMessage("Please enter your username or email and password.");
       return;
     }
 
@@ -86,7 +77,7 @@ export default function LoginForm() {
             htmlFor="login-username"
             className="mb-1.5 block text-sm font-medium text-[#080F24]"
           >
-            Email Address
+            Username or email
           </label>
 
           <input
@@ -94,7 +85,7 @@ export default function LoginForm() {
             name="username"
             type="text"
             autoComplete="username"
-            placeholder="Enter your email address"
+            placeholder="Enter your username or email"
             value={username}
             onChange={(event) => {
               setUsername(event.target.value);
