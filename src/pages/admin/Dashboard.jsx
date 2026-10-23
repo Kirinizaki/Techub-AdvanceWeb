@@ -94,9 +94,9 @@ const collapsibles = [
   },
 ];
 
-export default function Dashboard() {
+export default function Dashboard({ onLogout })  {
   return (
-    <AdminLayout>
+    <AdminLayout onLogout={onLogout}>
       {/* Page heading */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

@@ -149,7 +149,7 @@ const marginOptions = [
   "Above 30%",
 ];
 
-export default function AdminPriceManagement() {
+export default function AdminPriceManagement({ onLogout }) {
   const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All Categories");

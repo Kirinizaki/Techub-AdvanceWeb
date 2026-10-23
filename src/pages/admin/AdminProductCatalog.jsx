@@ -142,7 +142,7 @@ const categories = [
 const formatPrice = (price) =>
   `₱${price.toLocaleString('en-PH')}`;
 
-export default function AdminProductCatalog() {
+export default function AdminProductCatalog({ onLogout }) {
   const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -353,7 +353,7 @@ export default function AdminProductCatalog() {
   };
 
   return (
-    <AdminLayout>
+    <AdminLayout onLogout={onLogout}>
       <div className="min-w-0 space-y-4 font-sans text-slate-900">
         {/* Page heading */}
         <div className="flex flex-wrap items-start justify-between gap-3">

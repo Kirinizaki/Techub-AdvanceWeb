@@ -172,7 +172,7 @@ function StockStatus({ stock, reorder }) {
   );
 }
 
-export default function AdminInventoryManagement() {
+export default function AdminInventoryManagement({onLogout}) {
   const [search, setSearch] = useState("");
   const [warehouse, setWarehouse] = useState("All Warehouses");
   const [page, setPage] = useState(1);
@@ -296,7 +296,7 @@ export default function AdminInventoryManagement() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout onLogout={onLogout}>
       <div className="w-full min-w-0 text-slate-800">
         {/* Page heading */}
         <div className="flex flex-wrap items-start justify-between gap-3">
