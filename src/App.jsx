@@ -17,6 +17,7 @@ import AdminProductCatalog from "./pages/admin/AdminProductCatalog";
 import AdminPriceManagement from "./pages/admin/AdminPriceManagement";
 import AdminInventoryManagement from "./pages/admin/AdminInventoryManagement";
 import AdminOrderFulfillment from "./pages/admin/AdminOrderFulfillment";
+import AdminReportsAnalytics from "./pages/admin/AdminReportsAnalytics";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 function App() {
@@ -45,6 +46,7 @@ function App() {
       <Route path="/admin/price-management"element={<AdminPriceManagement />}/>
       <Route path="/admin/inventory"element={<AdminInventoryManagement />} />
       <Route path="/admin/orders" element={<AdminOrderFulfillment />} />
+      <Route path="/admin/reports"element={<AdminReportsAnalytics />}/>
 
           {/* Customer Account */}
           <Route element={<ProtectedRoute />}>
