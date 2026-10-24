@@ -14,12 +14,16 @@ const corsHeaders = {
 const SYSTEM_INSTRUCTION = `
 You are Techub's customer support assistant.
 
-Help customers with computer hardware, gaming and productivity laptops,
+Help customers primarily with computer hardware, gaming and productivity laptops,
 PC components, troubleshooting, and general store support.
 
 Rules:
-- Be friendly, clear, and concise.
+- Be friendly, natural, clear, and concise.
 - Answer general computer questions when you can.
+- For greetings and brief casual conversation, respond naturally.
+- If a customer asks an unrelated question, you may give a brief, simple answer
+  when appropriate, then gently guide the conversation back to PC hardware,
+  laptops, or Techub products. Do not turn unrelated topics into long discussions.
 - Never invent Techub products, prices, stock, policies, or order details.
 - Be honest when verified store information is unavailable.
 - Never claim to have processed orders, refunds, or payments.
@@ -116,12 +120,19 @@ async function getCatalogContext(
   message: string,
 ): Promise<string> {
   const requested = requestedCatalogCategories(message);
-  if (requested.length === 0) return "";
 
+  // Load category IDs even for model-only questions such as "Do you stock 3050?"
+  // so direct product-name/model matching can work without category keywords.
   const { data: categories, error: categoriesError } = await db
     .from("categories")
     .select("id, name")
-    .in("name", requested.map((item) => item.name));
+    .in(
+      "name",
+      requested.length
+        ? requested.map((item) => item.name)
+        : ["Graphics Cards", "CPUs", "Laptops", "Motherboards", "Memory (RAM)", "Storage", "Power Supplies", "Cases", "CPU Coolers", "Desktops"],
+    );
+
   if (categoriesError) {
     console.error("Catalog category lookup failed:", categoriesError.message);
     return "";
@@ -130,7 +141,8 @@ async function getCatalogContext(
 
   const categoryByName = new Map(categories.map((category) => [category.name, category]));
   const categoryById = new Map(categories.map((category) => [category.id, category.name]));
-  const products: Array<{
+
+  type CatalogProduct = {
     id: string;
     name: string;
     description: string | null;
@@ -138,28 +150,81 @@ async function getCatalogContext(
     stock_quantity: number | null;
     category_id: string;
     brand_id: string | null;
-  }> = [];
+  };
 
-  // Query each requested category separately so one large category cannot crowd
-  // all other relevant categories out of the context limit.
+  const productsById = new Map<string, CatalogProduct>();
+
+  // Retrieve every product in each requested category in bounded pages.
+  // This avoids the old .limit(40) omission while keeping each database request small.
   for (const categoryName of requested.map((item) => item.name)) {
     const category = categoryByName.get(categoryName);
     if (!category) continue;
-    const { data, error } = await db
+
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await db
+        .from("products")
+        .select("id, name, description, price, stock_quantity, category_id, brand_id")
+        .eq("category_id", category.id)
+        .order("name", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error(`Catalog product lookup failed for ${categoryName}:`, error.message);
+        break;
+      }
+
+      for (const product of (data ?? []) as CatalogProduct[]) {
+        productsById.set(product.id, product);
+      }
+      if (!data || data.length < pageSize) break;
+    }
+  }
+
+  // Search for product-name matches independently of category keyword detection.
+  // This helps find a specific item even when the customer doesn't say "GPU",
+  // "laptop", or the exact category name.
+  const queryTokens = [...new Set(
+    message
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3)
+  )].slice(0, 8);
+
+  if (queryTokens.length) {
+    const nameFilters = queryTokens.map((token) => `name.ilike.%${token.replace(/[%(),]/g, "")}%`);
+    const { data: directMatches, error: directMatchError } = await db
       .from("products")
       .select("id, name, description, price, stock_quantity, category_id, brand_id")
-      .eq("category_id", category.id)
-      .order("name", { ascending: true })
-      .limit(40);
-    if (error) {
-      console.error(`Catalog product lookup failed for ${categoryName}:`, error.message);
-      continue;
-    }
-    products.push(...(data ?? []));
-  }
-  if (products.length === 0) return "";
+      .or(nameFilters.join(","))
+      .limit(100);
 
-  const brandIds = [...new Set(products.map((product) => product.brand_id).filter(Boolean))];
+    if (directMatchError) {
+      console.error("Direct catalog product search failed:", directMatchError.message);
+    } else {
+      for (const product of (directMatches ?? []) as CatalogProduct[]) {
+        productsById.set(product.id, product);
+      }
+    }
+  }
+
+  const allProducts = [...productsById.values()];
+  if (allProducts.length === 0) return "";
+
+  // Put strong name matches first so they survive the prompt-size guard below.
+  const normalizedMessage = message.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const scoreProduct = (product: CatalogProduct) => {
+    const name = product.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const tokens = queryTokens.filter((token) => name.includes(token));
+    const fullPhraseMatch = name.length > 0 && normalizedMessage.includes(name);
+    return (fullPhraseMatch ? 1000 : 0) + tokens.length * 10;
+  };
+
+  allProducts.sort((a, b) => scoreProduct(b) - scoreProduct(a) || a.name.localeCompare(b.name));
+
+  const brandIds = [...new Set(allProducts.map((product) => product.brand_id).filter(Boolean))];
   const { data: brands, error: brandsError } = brandIds.length
     ? await db.from("brands").select("id, name").in("id", brandIds)
     : { data: [], error: null };
@@ -170,48 +235,64 @@ async function getCatalogContext(
 
   for (const category of requested) {
     if (!category.specTable || !category.specFields) continue;
-    const matchingProducts = products.filter(
+    const matchingProducts = allProducts.filter(
       (product) => categoryById.get(product.category_id) === category.name,
     );
     if (!matchingProducts.length) continue;
-    const { data: specs, error: specsError } = await db
-      .from(category.specTable)
-      .select(category.specFields)
-      .in("product_id", matchingProducts.map((product) => product.id));
-    if (specsError) {
-      console.error(`Catalog ${category.specTable} lookup failed:`, specsError.message);
-      continue;
-    }
-    for (const spec of specs ?? []) {
-      const { product_id, ...details } = spec as Record<string, unknown> & { product_id: string };
-      specsByProduct.set(product_id, details);
+
+    // Specs are fetched in chunks to avoid oversized `IN` filters.
+    const chunkSize = 200;
+    for (let i = 0; i < matchingProducts.length; i += chunkSize) {
+      const chunk = matchingProducts.slice(i, i + chunkSize);
+      const { data: specs, error: specsError } = await db
+        .from(category.specTable)
+        .select(category.specFields)
+        .in("product_id", chunk.map((product) => product.id));
+
+      if (specsError) {
+        console.error(`Catalog ${category.specTable} lookup failed:`, specsError.message);
+        continue;
+      }
+      for (const spec of specs ?? []) {
+        const { product_id, ...details } = spec as Record<string, unknown> & { product_id: string };
+        specsByProduct.set(product_id, details);
+      }
     }
   }
 
-  const lines: string[] = [];
-  for (const category of requested) {
-    lines.push(`Category: ${category.name}`);
-    const group = products.filter((product) => categoryById.get(product.category_id) === category.name);
-    if (group.length === 0) {
-      lines.push("No matching products were found in this category.");
-      continue;
-    }
-    for (const product of group) {
-      const stock = Number(product.stock_quantity ?? 0);
-      const spec = specsByProduct.get(product.id);
-      lines.push(JSON.stringify({
-        name: product.name,
-        brand: brandById.get(product.brand_id) ?? null,
-        category: category.name,
-        price: product.price,
-        stock_quantity: stock,
-        availability: stock > 0 ? "in stock" : "out of stock",
-        description: product.description || undefined,
-        specifications: spec && Object.keys(spec).length ? spec : undefined,
-      }));
-    }
+  const lines: string[] = [
+    "Catalog retrieval note: product records below were fetched from the requested categories in paginated queries, plus direct product-name matches.",
+    "Prompt context may be size-limited; prioritize exact product-name matches and do not infer that an omitted product is absent from Techub.",
+  ];
+
+  for (const product of allProducts) {
+    const categoryName = categoryById.get(product.category_id) ?? "Uncategorized";
+    const stock = Number(product.stock_quantity ?? 0);
+    const spec = specsByProduct.get(product.id);
+    lines.push(JSON.stringify({
+      name: product.name,
+      brand: brandById.get(product.brand_id) ?? null,
+      category: categoryName,
+      price: product.price,
+      stock_quantity: stock,
+      availability: stock > 0 ? "in stock" : "out of stock",
+      description: product.description || undefined,
+      specifications: spec && Object.keys(spec).length ? spec : undefined,
+    }));
   }
-  return lines.join("\n").slice(0, 24000);
+
+  // Keep each JSON record intact when enforcing the prompt-size guard.
+  // Products were sorted with the strongest name matches first, so those records
+  // are retained ahead of less relevant category listings.
+  const contextLines: string[] = [];
+  let contextLength = 0;
+  for (const line of lines) {
+    const nextLength = contextLength + line.length + 1;
+    if (nextLength > 24000) break;
+    contextLines.push(line);
+    contextLength = nextLength;
+  }
+  return contextLines.join("\n");
 }
 
 // Detect concrete GPU model claims in the generated answer and compare them
@@ -299,6 +380,7 @@ Catalog-grounding rules:
 - A product with stock_quantity 0 is out of stock. Do not describe it as available.
 - Never invent a product, price, stock quantity, or specification.
 - If the context does not contain enough information to verify a specification or compatibility, say so clearly and ask for the missing details.
+- The supplied catalog context may be size-limited. If a requested product is not present in the context, do not conclude that Techub does not carry it; say you could not verify it from the records available for this response.
 - You may give general hardware advice, but distinguish it from verified Techub catalog information.
 - Prices are in the store's listed currency; do not convert or infer additional fees.`,
           }],
@@ -375,7 +457,7 @@ export default {
       return json({ error: "Your session is invalid or has expired." }, 401);
     }
 
-    let body: { action?: unknown; message?: unknown };
+    let body: { action?: unknown; message?: unknown; clientMessageId?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -394,6 +476,14 @@ export default {
         body.message.length > 4000)
     ) {
       return json({ error: "Message must contain 1–4000 characters." }, 400);
+    }
+
+    if (
+      action === "send" &&
+      (typeof body.clientMessageId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientMessageId))
+    ) {
+      return json({ error: "A valid client message ID is required." }, 400);
     }
 
     // Service role is used only after authenticating the caller.
@@ -462,6 +552,7 @@ export default {
       }
 
       const message = (body.message as string).trim();
+      const clientMessageId = body.clientMessageId as string;
 
       if (!conversation) {
         const { data: created, error: createError } = await db
@@ -484,21 +575,114 @@ export default {
         }, 409);
       }
 
-      const { data: savedUserMessage, error: saveUserError } = await db
+      // Idempotency: retries reuse the same clientMessageId. Reuse the
+      // persisted customer message, but resume processing if its AI reply was
+      // never saved and the conversation is still active.
+      const { data: existingMessage, error: existingMessageError } = await db
         .from("support_messages")
-        .insert({
-          conversation_id: conversation.id,
-          sender_type: "customer",
-          sender_id: user.id,
-          content: message,
-        })
         .select("id, sender_type, sender_id, content, created_at")
-        .single();
+        .eq("conversation_id", conversation.id)
+        .eq("sender_type", "customer")
+        .eq("client_message_id", clientMessageId)
+        .maybeSingle();
 
-      if (saveUserError || !savedUserMessage) {
-        console.error("Customer message save failed:", saveUserError?.message);
-        return json({ error: "Unable to save your message. Please try again." }, 500);
+      if (existingMessageError) {
+        console.error("Idempotency lookup failed:", existingMessageError.message);
+        return json({ error: "Unable to verify whether your message was already saved." }, 500);
       }
+
+      let savedUserMessage: {
+        id: string;
+        sender_type: string;
+        sender_id: string | null;
+        content: string;
+        created_at: string;
+      };
+
+      if (existingMessage) {
+        const { data: followupMessages, error: followupError } = await db
+          .from("support_messages")
+          .select("id, sender_type, sender_id, content, created_at")
+          .eq("conversation_id", conversation.id)
+          .eq("reply_to_message_id", existingMessage.id)
+          .eq("sender_type", "ai")
+          .limit(1);
+
+        if (followupError) {
+          console.error("Idempotent reply lookup failed:", followupError.message);
+          return json({ error: "Unable to check whether a reply was already saved." }, 500);
+        }
+
+        const existingReply = followupMessages?.[0] ?? null;
+        const waitingForHuman =
+          conversation.status === "awaiting_support" || conversation.handoff_requested;
+
+        // A saved reply means the original request completed; return it.
+        // A handoff means AI must stay stopped, even on retry.
+        if (existingReply || waitingForHuman) {
+          return json({
+            conversation,
+            userMessage: existingMessage,
+            replyMessage: existingReply?.sender_type === "ai" ? existingReply : null,
+            reply: existingReply?.sender_type === "ai" ? existingReply.content : null,
+            handoff: {
+              requested: waitingForHuman,
+              status: waitingForHuman ? "awaiting_support" : "duplicate_request",
+            },
+            duplicate: true,
+          });
+        }
+
+        // No reply was saved and the conversation is active: safely resume
+        // processing the original persisted message without inserting it again.
+        savedUserMessage = existingMessage;
+      } else {
+        const { data: insertedMessage, error: saveUserError } = await db
+          .from("support_messages")
+          .insert({
+            conversation_id: conversation.id,
+            sender_type: "customer",
+            sender_id: user.id,
+            content: message,
+            client_message_id: clientMessageId,
+          })
+          .select("id, sender_type, sender_id, content, created_at")
+          .single();
+
+        if (saveUserError || !insertedMessage) {
+          // A concurrent request may have inserted the same idempotency key.
+          const { data: racedMessage } = await db
+            .from("support_messages")
+            .select("id, sender_type, sender_id, content, created_at")
+            .eq("conversation_id", conversation.id)
+            .eq("sender_type", "customer")
+            .eq("client_message_id", clientMessageId)
+            .maybeSingle();
+
+          if (racedMessage) {
+            return json({
+              conversation,
+              userMessage: racedMessage,
+              replyMessage: null,
+              reply: null,
+              handoff: {
+                requested: conversation.status === "awaiting_support" || conversation.handoff_requested,
+                status: conversation.status === "awaiting_support" ? "awaiting_support" : "duplicate_request",
+              },
+              duplicate: true,
+            });
+          }
+
+          console.error("Customer message save failed:", saveUserError?.message);
+          return json({ error: "Unable to save your message. Please try again." }, 500);
+        }
+
+        savedUserMessage = insertedMessage;
+      }
+
+      // Always use the persisted message body on retries, not a changed body
+      // supplied with a previously used clientMessageId.
+      const processingMessage = savedUserMessage.content;
 
       const now = new Date().toISOString();
       await db.from("support_conversations")
@@ -521,56 +705,125 @@ export default {
         });
       }
 
-      if (requestsHumanSupport(message)) {
-        const { data: handoffConversation, error: handoffError } = await db
-          .from("support_conversations")
-          .update({
-            status: "awaiting_support",
-            handoff_requested: true,
-            handoff_requested_at: now,
-            updated_at: now,
-          })
-          .eq("id", conversation.id)
-          .eq("customer_id", user.id)
-          .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
-          .single();
+      if (requestsHumanSupport(processingMessage)) {
+        // Perform the status transition and acknowledgment insert atomically.
+        // The database function locks the conversation row and prevents duplicate
+        // handoff acknowledgments when requests arrive concurrently.
+        const { data: handoffResult, error: handoffError } = await db.rpc(
+          "request_human_support",
+          {
+            p_conversation_id: conversation.id,
+            p_customer_id: user.id,
+          },
+        );
 
         if (handoffError) {
-          console.error("Handoff status save failed:", handoffError.message);
-          return json({ error: "Your message was saved, but we couldn't record the handoff request." }, 500);
+          console.error("Handoff request failed:", handoffError.message);
+          return json({
+            error: "Your message was saved, but we couldn't complete the handoff request. Please reload the chat.",
+          }, 500);
         }
 
-        const reply =
-          "I understand you'd like to speak with a human support agent. " +
-          "Your request has been saved. This chat is now waiting for human support. " +
-          "No agent has joined yet, and automatic staff notification is not available yet. " +
-          "You can send additional details here; they will be saved for the support team, " +
-          "but the AI will not send further replies while this conversation is waiting.";
+        if (!handoffResult?.accepted) {
+          // Another request may have changed the conversation before this RPC
+          // acquired the row lock. Reload current state instead of claiming success.
+          const { data: latestConversation, error: latestConversationError } = await db
+            .from("support_conversations")
+            .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
+            .eq("id", conversation.id)
+            .eq("customer_id", user.id)
+            .maybeSingle();
 
-        const { data: aiMessage, error: aiSaveError } = await db
-          .from("support_messages")
-          .insert({
-            conversation_id: conversation.id,
-            sender_type: "ai",
-            sender_id: null,
-            content: reply,
-          })
-          .select("id, sender_type, sender_id, content, created_at")
-          .single();
+          if (latestConversationError || !latestConversation) {
+            console.error("Conversation lookup after rejected handoff failed:", latestConversationError?.message);
+            return json({ error: "The conversation changed while your request was being processed. Please reload the chat." }, 500);
+          }
 
-        if (aiSaveError) {
-          console.error("Handoff reply save failed:", aiSaveError.message);
-          return json({ error: "Your handoff request was saved, but the reply could not be saved." }, 500);
+          return json({
+            conversation: latestConversation,
+            userMessage: savedUserMessage,
+            replyMessage: null,
+            reply: null,
+            handoff: {
+              requested: latestConversation.status === "awaiting_support" || latestConversation.handoff_requested,
+              status: latestConversation.status === "awaiting_support" ? "awaiting_support" : latestConversation.status,
+            },
+          }, 409);
         }
 
         return json({
-          conversation: handoffConversation,
+          conversation: handoffResult.conversation,
           userMessage: savedUserMessage,
-          replyMessage: aiMessage,
-          reply,
+          replyMessage: handoffResult.replyMessage,
+          reply: handoffResult.reply,
           handoff: { requested: true, status: "awaiting_support" },
         });
       }
+
+      // Claim this exact customer message before doing catalog or AI work.
+      // Concurrent retries either reuse a completed reply, wait for the owner,
+      // or reclaim an expired/failed lease.
+      const { data: claimResult, error: claimError } = await db.rpc("claim_ai_reply", {
+        p_conversation_id: conversation.id,
+        p_customer_id: user.id,
+        p_customer_message_id: savedUserMessage.id,
+        p_lease_seconds: 120,
+      });
+
+      if (claimError || !claimResult) {
+        console.error("AI reply claim failed:", claimError?.message);
+        return json({ error: "Unable to prepare your reply safely. Please try again." }, 500);
+      }
+
+      if (claimResult.status === "completed" && claimResult.replyMessage) {
+        return json({
+          conversation,
+          userMessage: savedUserMessage,
+          replyMessage: claimResult.replyMessage,
+          reply: claimResult.replyMessage.content,
+          handoff: { requested: false, status: "not_requested" },
+          duplicate: true,
+        });
+      }
+
+      if (claimResult.status === "busy") {
+        return json({
+          conversation,
+          userMessage: savedUserMessage,
+          replyMessage: null,
+          reply: null,
+          processing: true,
+          code: "AI_REPLY_IN_PROGRESS",
+        }, 202);
+      }
+
+      if (claimResult.status !== "claimed" || typeof claimResult.claimToken !== "string") {
+        const { data: latestConversation } = await db
+          .from("support_conversations")
+          .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
+          .eq("id", conversation.id)
+          .eq("customer_id", user.id)
+          .maybeSingle();
+        return json({
+          conversation: latestConversation ?? conversation,
+          userMessage: savedUserMessage,
+          replyMessage: null,
+          reply: null,
+          handoff: {
+            requested: !!(latestConversation?.handoff_requested || latestConversation?.status === "awaiting_support"),
+            status: latestConversation?.status ?? "inactive",
+          },
+        }, 409);
+      }
+      const aiClaimToken = claimResult.claimToken as string;
+      const releaseAiClaim = async (reason: string) => {
+        const { error } = await db.rpc("fail_ai_reply", {
+          p_customer_message_id: savedUserMessage.id,
+          p_claim_token: aiClaimToken,
+          p_error: reason,
+        });
+        if (error) console.error("AI claim release failed:", error.message);
+      };
 
       // Use persisted history rather than trusting browser-supplied history.
       const { data: priorMessages, error: historyError } = await db
@@ -583,6 +836,7 @@ export default {
 
       if (historyError) {
         console.error("Conversation history lookup failed:", historyError.message);
+        await releaseAiClaim("Conversation history lookup failed");
         return json({ error: "Unable to prepare your conversation history." }, 500);
       }
 
@@ -596,14 +850,14 @@ export default {
 
       let catalogContext = "";
       try {
-        catalogContext = await getCatalogContext(db, message);
+        catalogContext = await getCatalogContext(db, processingMessage);
       } catch (catalogError) {
         console.error("Catalog context retrieval failed:", catalogError);
       }
 
       let reply: string;
       try {
-        reply = await getGeminiReply(geminiKey, history, message, catalogContext);
+        reply = await getGeminiReply(geminiKey, history, processingMessage, catalogContext);
         // Enforce a deterministic catalog check for explicit GPU model names.
         // This leaves non-GPU support responses and persistence unchanged.
         if (requestedCatalogCategories(message).some((category) => category.name === "Graphics Cards")) {
@@ -611,35 +865,71 @@ export default {
         }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
+          await releaseAiClaim("AI request timed out");
           return json({ error: "The AI took too long to respond. Please try again." }, 504);
         }
         if (error instanceof Error && error.message === "AI_LIMIT") {
+          await releaseAiClaim("AI usage limit reached");
           return json({ error: "AI usage limit reached. Please try again later." }, 502);
         }
         if (error instanceof Error && error.message === "AI_BUSY") {
+          await releaseAiClaim("AI service busy");
           return json({ error: "The AI service is busy. Please try again shortly." }, 502);
         }
         if (error instanceof Error && error.message === "AI_EMPTY") {
+          await releaseAiClaim("AI returned empty response");
           return json({ error: "The AI returned an empty response." }, 502);
         }
         console.error("Gemini request failed:", error);
+        await releaseAiClaim("Gemini request failed");
         return json({ error: "The AI assistant could not respond. Please try again." }, 502);
       }
 
-      const { data: aiMessage, error: saveAiError } = await db
-        .from("support_messages")
-        .insert({
-          conversation_id: conversation.id,
-          sender_type: "ai",
-          sender_id: null,
-          content: reply,
-        })
-        .select("id, sender_type, sender_id, content, created_at")
-        .single();
+      // The database function locks the conversation row and checks its current
+      // state in the same transaction that inserts the AI reply. This serializes
+      // the final save against a concurrent human-handoff status update.
+      const { data: aiMessage, error: saveAiError } = await db.rpc(
+        "save_ai_reply_if_active",
+        {
+          p_conversation_id: conversation.id,
+          p_customer_id: user.id,
+          p_customer_message_id: savedUserMessage.id,
+          p_claim_token: aiClaimToken,
+          p_content: reply,
+        },
+      );
 
       if (saveAiError) {
         console.error("AI message save failed:", saveAiError.message);
+        await releaseAiClaim("AI reply persistence failed");
         return json({ error: "The AI replied, but we couldn't save its response. Please try again." }, 500);
+      }
+
+      // A null result means handoff/resolution won the race while Gemini was
+      // generating. Do not return or persist the generated AI response.
+      if (!aiMessage) {
+        const { data: latestConversation, error: latestConversationError } = await db
+          .from("support_conversations")
+          .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
+          .eq("id", conversation.id)
+          .eq("customer_id", user.id)
+          .single();
+
+        if (latestConversationError || !latestConversation) {
+          console.error("Conversation state lookup after skipped AI reply failed:", latestConversationError?.message);
+          return json({ error: "The conversation changed while your reply was being prepared. Please reload the chat." }, 500);
+        }
+
+        return json({
+          conversation: latestConversation,
+          userMessage: savedUserMessage,
+          replyMessage: null,
+          reply: null,
+          handoff: {
+            requested: latestConversation.status === "awaiting_support" || latestConversation.handoff_requested,
+            status: latestConversation.status === "awaiting_support" ? "awaiting_support" : latestConversation.status,
+          },
+        });
       }
 
       const { data: updatedConversation } = await db

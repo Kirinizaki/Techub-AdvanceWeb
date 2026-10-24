@@ -85,6 +85,88 @@ function ChatSupport() {
     }
   };
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Sends/retries the same persisted customer message and waits briefly when
+  // another request currently owns its AI-reply claim.
+  const processMessage = useCallback(async ({
+    text,
+    clientMessageId,
+    uiMessageId,
+    createdAt,
+  }) => {
+    const requestBody = {
+      action: "send",
+      message: text,
+      clientMessageId,
+    };
+
+    let data = await invokeChat(requestBody);
+    let attempts = 0;
+
+    while (data.processing === true && attempts < 10) {
+      setMessages((prev) => prev.map((item) =>
+        item.id === uiMessageId
+          ? { ...item, pending: true, processing: true, failed: false, errorText: "" }
+          : item
+      ));
+      await sleep(1500);
+      attempts += 1;
+      data = await invokeChat(requestBody);
+    }
+
+    if (data.conversation) setConversation(data.conversation);
+
+    const savedUserMessage = {
+      ...mapSavedMessage(data.userMessage ?? {
+        id: uiMessageId,
+        sender_type: "customer",
+        content: text,
+        created_at: createdAt,
+      }),
+      clientMessageId,
+    };
+
+    if (data.processing === true) {
+      // Keep the saved customer message visible and offer a manual status check.
+      setMessages((prev) => prev.map((item) =>
+        item.id === uiMessageId
+          ? {
+              ...savedUserMessage,
+              pending: false,
+              processing: true,
+              failed: false,
+              errorText: "",
+            }
+          : item
+      ));
+      return;
+    }
+
+    const replyMessage = data.replyMessage
+      ? mapSavedMessage(data.replyMessage)
+      : data.reply
+        ? mapSavedMessage({
+            id: crypto.randomUUID(),
+            sender_type: "ai",
+            content: data.reply,
+            created_at: new Date().toISOString(),
+          })
+        : null;
+
+    setMessages((prev) => {
+      const replaced = prev.map((item) =>
+        item.id === uiMessageId
+          ? { ...savedUserMessage, pending: false, processing: false, failed: false }
+          : item
+      );
+      if (!replyMessage) return replaced;
+      // Avoid appending a reply that is already present after a refresh/retry.
+      if (replaced.some((item) => item.id === replyMessage.id)) return replaced;
+      return [...replaced, replyMessage];
+    });
+  }, [invokeChat]);
+
   const handleSend = async (e) => {
     e.preventDefault();
     const text = message.trim();
@@ -95,59 +177,84 @@ function ChatSupport() {
       return;
     }
 
-    const optimisticId = `pending-${crypto.randomUUID()}`;
+    const clientMessageId = crypto.randomUUID();
+    const optimisticId = `pending-${clientMessageId}`;
     const optimisticMessage = {
       id: optimisticId,
+      clientMessageId,
       text,
       sender: "user",
       createdAt: new Date().toISOString(),
       pending: true,
     };
 
-    // Show the customer's message immediately, before waiting for the Edge Function.
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessage("");
     setIsLoading(true);
     setLoadError("");
 
     try {
-      const data = await invokeChat({ action: "send", message: text });
-      if (data.conversation) setConversation(data.conversation);
-
-      const savedUserMessage = mapSavedMessage(data.userMessage ?? {
-        id: optimisticId,
-        sender_type: "customer",
-        content: text,
-        created_at: optimisticMessage.createdAt,
-      });
-      const replyMessage = data.replyMessage
-        ? mapSavedMessage(data.replyMessage)
-        : data.reply
-          ? mapSavedMessage({
-              id: crypto.randomUUID(),
-              sender_type: "ai",
-              content: data.reply,
-              created_at: new Date().toISOString(),
-            })
-          : null;
-
-      // Replace the temporary bubble; append an AI reply only when the backend
-      // explicitly returned one. Awaiting-support messages receive no AI reply.
-      setMessages((prev) => {
-        const replaced = prev.map((item) =>
-          item.id === optimisticId ? savedUserMessage : item
-        );
-        return replyMessage ? [...replaced, replyMessage] : replaced;
+      await processMessage({
+        text,
+        clientMessageId,
+        uiMessageId: optimisticId,
+        createdAt: optimisticMessage.createdAt,
       });
     } catch (error) {
       console.error("Chat support error:", error);
-      // Remove the optimistic bubble if the send failed, and restore its text for retry.
-      setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
-      setMessage(text);
-      setLoadError(error?.message || "Sorry, we couldn't send your message. Please try again.");
-      if (error?.code === "CONVERSATION_RESOLVED") {
-        await loadConversation();
-      }
+      setMessages((prev) => prev.map((item) =>
+        item.id === optimisticId
+          ? {
+              ...item,
+              pending: false,
+              processing: false,
+              failed: true,
+              errorText: error?.message || "Couldn't send this message.",
+            }
+          : item
+      ));
+      if (error?.code === "CONVERSATION_RESOLVED") await loadConversation();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRetryMessage = async (targetMessage) => {
+    if (isLoading || (!targetMessage?.failed && !targetMessage?.processing)) return;
+    if (!targetMessage.clientMessageId) {
+      setLoadError("This message cannot be retried safely. Reload the conversation and try again.");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError("");
+    setMessages((prev) => prev.map((item) =>
+      item.id === targetMessage.id
+        ? { ...item, pending: true, processing: false, failed: false, errorText: "" }
+        : item
+    ));
+
+    try {
+      await processMessage({
+        text: targetMessage.text,
+        clientMessageId: targetMessage.clientMessageId,
+        uiMessageId: targetMessage.id,
+        createdAt: targetMessage.createdAt,
+      });
+    } catch (error) {
+      console.error("Retrying chat message failed:", error);
+      setMessages((prev) => prev.map((item) =>
+        item.id === targetMessage.id
+          ? {
+              ...item,
+              pending: false,
+              processing: false,
+              failed: true,
+              errorText: error?.message || "Couldn't send this message.",
+            }
+          : item
+      ));
+      if (error?.code === "CONVERSATION_RESOLVED") await loadConversation();
     } finally {
       setIsLoading(false);
     }
@@ -242,6 +349,32 @@ function ChatSupport() {
                     <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
                     Sending...
                   </span>
+                )}
+                {item.sender === "user" && item.processing && !item.pending && (
+                  <div className="flex items-center justify-end gap-2 px-1 text-[11px] text-gray-500" role="status" aria-live="polite">
+                    <span>Your reply is still being prepared.</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRetryMessage(item)}
+                      disabled={isLoading}
+                      className="font-semibold underline underline-offset-2 disabled:opacity-50"
+                    >
+                      Check reply
+                    </button>
+                  </div>
+                )}
+                {item.sender === "user" && item.failed && (
+                  <div className="flex items-center justify-end gap-2 px-1 text-[11px] text-red-600" role="alert">
+                    <span>{item.errorText || "Couldn't send this message."}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRetryMessage(item)}
+                      disabled={isLoading}
+                      className="font-semibold underline underline-offset-2 disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
