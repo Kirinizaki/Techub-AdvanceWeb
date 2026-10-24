@@ -937,7 +937,7 @@ function NotificationSettings({ settings, updateSetting }) {
 
 /* ---------- Main System Settings page ---------- */
 
-export default function AdminSystemSettings() {
+export default function AdminSystemSettings({onLogout}) {
   const [activeTab, setActiveTab] = useState('General Settings');
   const [settings, setSettings] = useState({ ...defaultSettings });
   const [users, setUsers] = useState([]);
@@ -1013,7 +1013,7 @@ export default function AdminSystemSettings() {
   };
 
   return (
-    <AdminLayout>
+    <AdminLayout onLogout={onLogout}>
       <div className="w-full min-w-0 space-y-4 text-slate-800">
         {/* Page heading */}
         <div>
