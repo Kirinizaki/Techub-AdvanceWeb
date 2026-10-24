@@ -66,10 +66,213 @@ function requestsHumanSupport(message: string): boolean {
   return patterns.some((pattern) => pattern.test(normalized));
 }
 
+type CatalogCategory = {
+  name: string;
+  specTable?: string;
+  specFields?: string;
+};
+
+function requestedCatalogCategories(message: string): CatalogCategory[] {
+  const text = message.toLowerCase();
+  const categories: CatalogCategory[] = [];
+  const add = (category: CatalogCategory) => {
+    if (!categories.some((item) => item.name === category.name)) categories.push(category);
+  };
+
+  if (/\b(gpu|graphics card|video card|radeon|geforce|rtx\s?\d|rx\s?\d)\b/.test(text)) {
+    add({ name: "Graphics Cards", specTable: "gpu_specs", specFields: "product_id, chipset, vram_gb, board_power_watts, recommended_psu_watts, power_connectors, length_mm" });
+  }
+  if (/\b(cpu|processor|ryzen|intel core|core i[3579]|core ultra)\b/.test(text)) {
+    add({ name: "CPUs", specTable: "cpu_specs", specFields: "product_id, socket, processor_family, core_count, thread_count, power_rating_watts, power_rating_type, has_integrated_graphics, integrated_graphics_model, base_clock_mhz, boost_clock_mhz" });
+  }
+  if (/\b(laptop|notebook)\b/.test(text)) {
+    add({ name: "Laptops", specTable: "laptop_specs", specFields: "product_id, processor, graphics, ram_gb, storage_gb, screen_size_inches, resolution, refresh_rate_hz, laptop_type, memory_type, memory_speed_mhz, upgradeable_ram, max_ram_gb, storage_type, panel_type" });
+  }
+  if (/\b(motherboard|mainboard)\b/.test(text)) {
+    add({ name: "Motherboards", specTable: "motherboard_specs", specFields: "product_id, socket, chipset, form_factor, memory_type, memory_slots, max_memory_gb, supported_memory_speed_mhz" });
+  }
+  if (/\b(ram|memory kit|memory stick|ddr4|ddr5)\b/.test(text)) {
+    add({ name: "Memory (RAM)", specTable: "memory_specs", specFields: "product_id, memory_type, capacity_gb, speed_mhz, module_count, module_capacity_gb" });
+  }
+  if (/\b(storage|ssd|hard drive|hdd|nvme)\b/.test(text)) add({ name: "Storage" });
+  if (/\b(power supply|psu|wattage)\b/.test(text)) add({ name: "Power Supplies" });
+  if (/\b(pc case|computer case|chassis)\b/.test(text)) add({ name: "Cases" });
+  if (/\b(cpu cooler|air cooler|aio|liquid cooler|radiator)\b/.test(text)) {
+    add({ name: "CPU Coolers", specTable: "cooler_specs", specFields: "product_id, cooler_type, compatible_sockets, radiator_size_mm, height_mm" });
+  }
+  if (/\b(prebuilt|desktop pc|gaming pc|productivity pc)\b/.test(text)) {
+    add({ name: "Desktops", specTable: "desktop_specs", specFields: "product_id, processor, graphics, memory_gb, storage_gb, operating_system, memory_type, memory_speed_mhz, storage_type, motherboard, psu_wattage, case_model, cooling_type, wifi_supported, bluetooth_supported, warranty_months" });
+  }
+  if (/\b(pair|pairing|compatible|compatibility|bottleneck)\b/.test(text) &&
+      /\b(gpu|graphics card|video card)\b/.test(text) &&
+      !categories.some((item) => item.name === "CPUs")) {
+    add({ name: "CPUs", specTable: "cpu_specs", specFields: "product_id, socket, processor_family, core_count, thread_count, power_rating_watts, power_rating_type, has_integrated_graphics, integrated_graphics_model, base_clock_mhz, boost_clock_mhz" });
+  }
+  return categories;
+}
+
+async function getCatalogContext(
+  db: ReturnType<typeof createClient>,
+  message: string,
+): Promise<string> {
+  const requested = requestedCatalogCategories(message);
+  if (requested.length === 0) return "";
+
+  const { data: categories, error: categoriesError } = await db
+    .from("categories")
+    .select("id, name")
+    .in("name", requested.map((item) => item.name));
+  if (categoriesError) {
+    console.error("Catalog category lookup failed:", categoriesError.message);
+    return "";
+  }
+  if (!categories?.length) return "";
+
+  const categoryByName = new Map(categories.map((category) => [category.name, category]));
+  const categoryById = new Map(categories.map((category) => [category.id, category.name]));
+  const products: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    price: number | string;
+    stock_quantity: number | null;
+    category_id: string;
+    brand_id: string | null;
+  }> = [];
+
+  // Query each requested category separately so one large category cannot crowd
+  // all other relevant categories out of the context limit.
+  for (const categoryName of requested.map((item) => item.name)) {
+    const category = categoryByName.get(categoryName);
+    if (!category) continue;
+    const { data, error } = await db
+      .from("products")
+      .select("id, name, description, price, stock_quantity, category_id, brand_id")
+      .eq("category_id", category.id)
+      .order("name", { ascending: true })
+      .limit(40);
+    if (error) {
+      console.error(`Catalog product lookup failed for ${categoryName}:`, error.message);
+      continue;
+    }
+    products.push(...(data ?? []));
+  }
+  if (products.length === 0) return "";
+
+  const brandIds = [...new Set(products.map((product) => product.brand_id).filter(Boolean))];
+  const { data: brands, error: brandsError } = brandIds.length
+    ? await db.from("brands").select("id, name").in("id", brandIds)
+    : { data: [], error: null };
+  if (brandsError) console.error("Catalog brand lookup failed:", brandsError.message);
+
+  const brandById = new Map((brands ?? []).map((brand) => [brand.id, brand.name]));
+  const specsByProduct = new Map<string, Record<string, unknown>>();
+
+  for (const category of requested) {
+    if (!category.specTable || !category.specFields) continue;
+    const matchingProducts = products.filter(
+      (product) => categoryById.get(product.category_id) === category.name,
+    );
+    if (!matchingProducts.length) continue;
+    const { data: specs, error: specsError } = await db
+      .from(category.specTable)
+      .select(category.specFields)
+      .in("product_id", matchingProducts.map((product) => product.id));
+    if (specsError) {
+      console.error(`Catalog ${category.specTable} lookup failed:`, specsError.message);
+      continue;
+    }
+    for (const spec of specs ?? []) {
+      const { product_id, ...details } = spec as Record<string, unknown> & { product_id: string };
+      specsByProduct.set(product_id, details);
+    }
+  }
+
+  const lines: string[] = [];
+  for (const category of requested) {
+    lines.push(`Category: ${category.name}`);
+    const group = products.filter((product) => categoryById.get(product.category_id) === category.name);
+    if (group.length === 0) {
+      lines.push("No matching products were found in this category.");
+      continue;
+    }
+    for (const product of group) {
+      const stock = Number(product.stock_quantity ?? 0);
+      const spec = specsByProduct.get(product.id);
+      lines.push(JSON.stringify({
+        name: product.name,
+        brand: brandById.get(product.brand_id) ?? null,
+        category: category.name,
+        price: product.price,
+        stock_quantity: stock,
+        availability: stock > 0 ? "in stock" : "out of stock",
+        description: product.description || undefined,
+        specifications: spec && Object.keys(spec).length ? spec : undefined,
+      }));
+    }
+  }
+  return lines.join("\n").slice(0, 24000);
+}
+
+// Detect concrete GPU model claims in the generated answer and compare them
+// against GPU model identifiers present in the retrieved Techub catalog.
+function extractGpuModels(text: string): string[] {
+  const pattern = /\b(?:RTX|GTX)\s*\d{3,4}(?:\s*(?:TI|SUPER))?|\bRX\s*\d{3,4}(?:\s*XT)?\b/gi;
+  return [...new Set((text.match(pattern) ?? []).map((model) =>
+    model.toUpperCase().replace(/\s+/g, " ").trim()
+  ))];
+}
+
+function catalogGpuProducts(catalogContext: string): Array<{
+  name: string;
+  price: number | string;
+  stock_quantity: number;
+}> {
+  const products: Array<{ name: string; price: number | string; stock_quantity: number }> = [];
+  for (const line of catalogContext.split("\n")) {
+    if (!line.startsWith("{")) continue;
+    try {
+      const item = JSON.parse(line);
+      if (item.category === "Graphics Cards" && typeof item.name === "string") {
+        products.push({
+          name: item.name,
+          price: item.price,
+          stock_quantity: Number(item.stock_quantity ?? 0),
+        });
+      }
+    } catch {
+      // Ignore category labels or any incomplete context line.
+    }
+  }
+  return products;
+}
+
+function validateGpuRecommendations(reply: string, catalogContext: string): string {
+  const mentionedModels = extractGpuModels(reply);
+  if (mentionedModels.length === 0) return reply;
+
+  const products = catalogGpuProducts(catalogContext);
+  const catalogModels = new Set(products.flatMap((product) => extractGpuModels(product.name)));
+  const unsupported = mentionedModels.filter((model) => !catalogModels.has(model));
+  if (unsupported.length === 0) return reply;
+
+  console.warn("Removed unsupported GPU recommendation; model(s) absent from retrieved catalog:", unsupported);
+  const inStock = products.filter((product) => product.stock_quantity > 0).slice(0, 4);
+  if (inStock.length === 0) {
+    return "I couldn't verify that GPU recommendation against Techub's current catalog. I don't want to suggest a model that may not be listed or available. Please check the Graphics Cards section in the store for current options.";
+  }
+
+  const options = inStock.map((product) =>
+    `- ${product.name} — ₱${Number(product.price).toLocaleString("en-PH")}`
+  ).join("\n");
+  return `I couldn't verify every GPU model in my initial recommendation against Techub's catalog, so I won't present those unverified models as store products. Here are some graphics cards I could verify in the retrieved catalog and that currently have stock:\n\n${options}\n\nThese are catalog listings, not a guarantee that each is the best match for your build. If you share your budget and target resolution, I can help compare these verified options.`;
+}
+
 async function getGeminiReply(
   apiKey: string,
   history: ChatMessage[],
   message: string,
+  catalogContext: string,
 ): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -83,7 +286,23 @@ async function getGeminiReply(
         "x-goog-api-key": apiKey,
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+        systemInstruction: {
+          parts: [{
+            text: `${SYSTEM_INSTRUCTION}
+
+Verified catalog context for this customer message:
+${catalogContext || "No matching catalog data was found. Do not claim a product is listed or in stock; ask a clarifying question or explain that availability could not be verified."}
+
+Catalog-grounding rules:
+- Treat the catalog context as the only source of truth for Techub product names, listed prices, and stock.
+- Recommend only products present in the supplied catalog context when naming a Techub product.
+- A product with stock_quantity 0 is out of stock. Do not describe it as available.
+- Never invent a product, price, stock quantity, or specification.
+- If the context does not contain enough information to verify a specification or compatibility, say so clearly and ask for the missing details.
+- You may give general hardware advice, but distinguish it from verified Techub catalog information.
+- Prices are in the store's listed currency; do not convert or infer additional fees.`,
+          }],
+        },
         contents: [
           ...history.map((item) => ({
             role: item.role,
@@ -287,6 +506,21 @@ export default {
         .eq("id", conversation.id)
         .eq("customer_id", user.id);
 
+      // Once human support has been requested, keep saving customer messages
+      // but do not generate additional AI replies while the conversation waits.
+      if (conversation.status === "awaiting_support" || conversation.handoff_requested) {
+        return json({
+          conversation: {
+            ...conversation,
+            updated_at: now,
+          },
+          userMessage: savedUserMessage,
+          replyMessage: null,
+          reply: null,
+          handoff: { requested: true, status: "awaiting_support" },
+        });
+      }
+
       if (requestsHumanSupport(message)) {
         const { data: handoffConversation, error: handoffError } = await db
           .from("support_conversations")
@@ -308,9 +542,10 @@ export default {
 
         const reply =
           "I understand you'd like to speak with a human support agent. " +
-          "Your request has been saved, but automatic staff notification and live transfer " +
-          "aren't available yet. A staff member has not been notified through this chat. " +
-          "Please use Techub's available support channel to contact the team.";
+          "Your request has been saved. This chat is now waiting for human support. " +
+          "No agent has joined yet, and automatic staff notification is not available yet. " +
+          "You can send additional details here; they will be saved for the support team, " +
+          "but the AI will not send further replies while this conversation is waiting.";
 
         const { data: aiMessage, error: aiSaveError } = await db
           .from("support_messages")
@@ -333,7 +568,7 @@ export default {
           userMessage: savedUserMessage,
           replyMessage: aiMessage,
           reply,
-          handoff: { requested: true, status: "saved_not_notified" },
+          handoff: { requested: true, status: "awaiting_support" },
         });
       }
 
@@ -359,9 +594,21 @@ export default {
         }))
         .slice(-12);
 
+      let catalogContext = "";
+      try {
+        catalogContext = await getCatalogContext(db, message);
+      } catch (catalogError) {
+        console.error("Catalog context retrieval failed:", catalogError);
+      }
+
       let reply: string;
       try {
-        reply = await getGeminiReply(geminiKey, history, message);
+        reply = await getGeminiReply(geminiKey, history, message, catalogContext);
+        // Enforce a deterministic catalog check for explicit GPU model names.
+        // This leaves non-GPU support responses and persistence unchanged.
+        if (requestedCatalogCategories(message).some((category) => category.name === "Graphics Cards")) {
+          reply = validateGpuRecommendations(reply, catalogContext);
+        }
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           return json({ error: "The AI took too long to respond. Please try again." }, 504);

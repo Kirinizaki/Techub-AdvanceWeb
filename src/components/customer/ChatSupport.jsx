@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Headset, X, Send, Bot, UserRound, RotateCcw } from "lucide-react";
+import { Headset, X, Send, Bot, UserRound, RotateCcw, LoaderCircle } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 
 function mapSavedMessage(item) {
@@ -95,6 +95,17 @@ function ChatSupport() {
       return;
     }
 
+    const optimisticId = `pending-${crypto.randomUUID()}`;
+    const optimisticMessage = {
+      id: optimisticId,
+      text,
+      sender: "user",
+      createdAt: new Date().toISOString(),
+      pending: true,
+    };
+
+    // Show the customer's message immediately, before waiting for the Edge Function.
+    setMessages((prev) => [...prev, optimisticMessage]);
     setMessage("");
     setIsLoading(true);
     setLoadError("");
@@ -103,23 +114,35 @@ function ChatSupport() {
       const data = await invokeChat({ action: "send", message: text });
       if (data.conversation) setConversation(data.conversation);
 
-      setMessages((prev) => [
-        ...prev,
-        mapSavedMessage(data.userMessage ?? {
-          id: crypto.randomUUID(),
-          sender_type: "customer",
-          content: text,
-          created_at: new Date().toISOString(),
-        }),
-        mapSavedMessage(data.replyMessage ?? {
-          id: crypto.randomUUID(),
-          sender_type: "ai",
-          content: data.reply,
-          created_at: new Date().toISOString(),
-        }),
-      ]);
+      const savedUserMessage = mapSavedMessage(data.userMessage ?? {
+        id: optimisticId,
+        sender_type: "customer",
+        content: text,
+        created_at: optimisticMessage.createdAt,
+      });
+      const replyMessage = data.replyMessage
+        ? mapSavedMessage(data.replyMessage)
+        : data.reply
+          ? mapSavedMessage({
+              id: crypto.randomUUID(),
+              sender_type: "ai",
+              content: data.reply,
+              created_at: new Date().toISOString(),
+            })
+          : null;
+
+      // Replace the temporary bubble; append an AI reply only when the backend
+      // explicitly returned one. Awaiting-support messages receive no AI reply.
+      setMessages((prev) => {
+        const replaced = prev.map((item) =>
+          item.id === optimisticId ? savedUserMessage : item
+        );
+        return replyMessage ? [...replaced, replyMessage] : replaced;
+      });
     } catch (error) {
       console.error("Chat support error:", error);
+      // Remove the optimistic bubble if the send failed, and restore its text for retry.
+      setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
       setMessage(text);
       setLoadError(error?.message || "Sorry, we couldn't send your message. Please try again.");
       if (error?.code === "CONVERSATION_RESOLVED") {
@@ -142,7 +165,7 @@ function ChatSupport() {
               <h3 className="text-sm font-bold">Techub Support</h3>
               <p className="text-xs text-gray-300">
                 {conversation?.status === "awaiting_support"
-                  ? "Human support requested"
+                  ? "Waiting for human support"
                   : conversation?.status === "resolved"
                     ? "Conversation resolved"
                     : "AI Assistant"}
@@ -210,6 +233,16 @@ function ChatSupport() {
                 >
                   {item.text}
                 </div>
+                {item.sender === "user" && item.pending && (
+                  <span
+                    className="flex items-center justify-end gap-1 px-1 text-[11px] text-gray-500"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <LoaderCircle size={12} className="animate-spin" aria-hidden="true" />
+                    Sending...
+                  </span>
+                )}
               </div>
             ))}
 
@@ -230,11 +263,6 @@ function ChatSupport() {
               </div>
             )}
 
-            {isLoading && (
-              <div className="self-start rounded-xl rounded-bl-sm border border-gray-200 bg-white px-3 py-2 text-sm text-gray-500" role="status">
-                Techub is typing...
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
 
