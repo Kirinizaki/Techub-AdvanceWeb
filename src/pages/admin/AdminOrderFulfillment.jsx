@@ -1,1160 +1,799 @@
-
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
   Download,
+  Package,
   Printer,
   Search,
-  Calendar,
-  Warehouse,
-  SlidersHorizontal,
-  ChevronDown,
-  ClipboardList,
-  Package,
   Truck,
-  CircleCheck,
-  ArrowRight,
-  Clock,
-  Hourglass,
-  TrendingUp,
-  Globe,
-  Monitor,
-  Keyboard,
-  CreditCard,
-  Send,
-} from 'lucide-react';
-import AdminLayout from '../../layouts/AdminLayout';
+} from "lucide-react";
+import AdminLayout from "../../layouts/AdminLayout";
+import { supabase } from "../../lib/supabaseClient";
 
-<<<<<<< HEAD
-/* ---------- Static data (replace with Supabase later) ---------- */
-=======
-/* ---------- Static data ---------- */
->>>>>>> origin/Kael
-
-const summaryCards = [
-  {
-    label: 'Orders in Queue',
-    value: '24 Orders',
-    note: '12 awaiting packing station',
-    noteDot: 'bg-blue-600',
-    footer: 'Queue capacity: 68%',
-    footerStyle: 'text-blue-700',
-    footerIcon: ArrowRight,
-    icon: ClipboardList,
-    iconStyle: 'bg-blue-50 text-blue-600',
-  },
-  {
-    label: 'Processing & Packing',
-    value: '8 Orders',
-    note: 'Ready for courier pickup',
-    noteDot: 'bg-blue-600',
-    footer: 'Next batch: 11:30 AM',
-    footerStyle: 'text-slate-600',
-    footerIcon: Clock,
-    icon: Package,
-    iconStyle: 'bg-slate-100 text-slate-500',
-  },
-  {
-    label: 'Shipped / In Transit',
-    value: '46 Orders',
-    note: 'Out for delivery today',
-    noteDot: 'bg-emerald-500',
-    footer: 'Avg transit: 1.4 days',
-    footerStyle: 'text-blue-700',
-    footerIcon: Hourglass,
-    icon: Truck,
-    iconStyle: 'bg-blue-50 text-blue-600',
-  },
-  {
-    label: 'Completed Today',
-    value: '19 Orders',
-    note: '₱418,200 total settled',
-    noteDot: 'bg-emerald-500',
-    footer: '100% on-time fulfillment',
-    footerStyle: 'text-emerald-700',
-    footerIcon: TrendingUp,
-    icon: CircleCheck,
-    iconStyle: 'bg-emerald-50 text-emerald-600',
-  },
-];
-
-const tabs = [
-  { label: 'All Orders (98)', status: 'All' },
-  { label: 'Pending Payment (4)', status: 'Pending Payment' },
-  { label: 'Processing (24)', status: 'Processing' },
-  { label: 'Ready to Ship (8)', status: 'Ready to Ship' },
-  { label: 'In Transit (46)', status: 'In Transit' },
-  { label: 'Delivered', status: 'Delivered' },
-  { label: 'Returned/Cancelled', status: 'Returned/Cancelled' },
-];
-
-const orders = [
-  {
-    id: '#TH2026-0918',
-    when: 'Today, 09:15 AM',
-    icon: Globe,
-    iconStyle: 'bg-blue-50 text-blue-600',
-    customer: 'Jaime Uy',
-    location: 'Walk-in SuperAdmin',
-    qty: 1,
-    item: 'RTX 4070 Ti SUPER OC',
-    payment: 'GCash Paid',
-    payDot: 'bg-emerald-500',
-    total: 58490,
-    status: 'Processing',
-    action: 'ship',
-  },
-  {
-    id: '#TH2026-0917',
-    when: 'Today, 08:30 AM',
-    icon: Monitor,
-    iconStyle: 'bg-blue-50 text-blue-600',
-    customer: 'John Vincent Almonia',
-    location: 'Metro Manila',
-    item: 'Full Custom Gaming PC',
-    note: 'Ryzen 7 • 32GB RAM',
-    payment: 'Bank Transfer Verified',
-    payDot: 'bg-emerald-500',
-    total: 84200,
-    status: 'Processing',
-    action: 'ship',
-  },
-  {
-    id: '#TH2026-0916',
-    when: 'Yesterday, 04:20 PM',
-    icon: Keyboard,
-    iconStyle: 'bg-blue-50 text-blue-600',
-    customer: 'Joseph Armia Jr.',
-    location: 'Makati City',
-    qty: 1,
-    item: 'Mechanical Keyboard',
-    note: '1x 2TB NVMe PCIe 4.0',
-    payment: 'Maya Online',
-    payDot: 'bg-emerald-500',
-    total: 14850,
-    status: 'Ready to Ship',
-    action: 'label',
-  },
-  {
-    id: '#TH2026-0915',
-    when: 'Yesterday, 02:10 PM',
-    icon: Monitor,
-    iconStyle: 'bg-blue-50 text-blue-600',
-    customer: 'James Alba',
-    location: 'Cebu City',
-    qty: 1,
-    item: 'Samsung Neo G9 Monitor',
-    payment: 'Credit Card (Mastercard)',
-    payDot: 'bg-blue-600',
-    total: 89990,
-    status: 'In Transit',
-    statusNote: 'LBC Express',
-    action: 'track',
-  },
-  {
-    id: '#TH2026-0914',
-    when: 'Sep 16, 2026',
-    icon: Package,
-    iconStyle: 'bg-emerald-100 text-emerald-700',
-    customer: 'Marvin Caseres',
-    location: 'Quezon City',
-    qty: 2,
-    item: 'Corsair DDR5 RAM 32GB Kit',
-    payment: 'COD Approved',
-    payDot: 'bg-emerald-500',
-    total: 14900,
-    status: 'Delivered',
-    action: 'details',
-  },
-  {
-    id: '#TH2026-0913',
-    when: 'Sep 15, 2026',
-    icon: Package,
-    iconStyle: 'bg-emerald-100 text-emerald-700',
-    customer: 'Angelo Ramos',
-    location: 'Pasig City',
-    qty: 1,
-    item: 'MSI B650 Motherboard',
-    payment: 'GCash Paid',
-    payDot: 'bg-emerald-500',
-    total: 13800,
-    status: 'Delivered',
-    action: 'details',
-  },
-];
-
-const statusStyle = {
-  'Pending Payment': {
-    pill: 'bg-orange-100 text-orange-700',
-    dot: 'bg-orange-500',
-  },
-  Processing: {
-    pill: 'bg-slate-100 text-slate-600',
-    dot: 'bg-slate-500',
-  },
-  'Ready to Ship': {
-    pill: 'bg-amber-100 text-amber-700',
-    dot: 'bg-amber-500',
-  },
-  'In Transit': {
-    pill: 'bg-sky-100 text-sky-700',
-    dot: 'bg-sky-500',
-  },
-  Delivered: {
-    pill: 'bg-emerald-100 text-emerald-700',
-    dot: 'bg-emerald-600',
-  },
-  'Returned/Cancelled': {
-    pill: 'bg-rose-100 text-rose-600',
-    dot: 'bg-rose-500',
-  },
+/* ------------------------------------------------------------------
+   RPC CONFIG
+   Your handoff lists the function names and argument TYPES, but not the
+   argument NAMES. supabase.rpc() needs the names. If an action fails with
+   "Could not find the function ...", fix the names here (see the query in
+   my message to look them up).
+------------------------------------------------------------------- */
+const RPC = {
+  confirm: (id) => ["confirm_customer_order", { p_order_id: id }],
+  cancel: (id) => ["cancel_customer_order", { p_order_id: id }],
+  collect: (id) => ["record_cod_collection", { p_order_id: id }],
+  fulfill: (id, status) => [
+    "update_order_fulfillment",
+    { p_order_id: id, p_status: status },
+  ],
 };
 
-const formatPrice = (n) => `₱${n.toLocaleString('en-PH')}`;
+const PAGE_SIZE = 8;
 
-/* ---------- Small components ---------- */
+const TABS = [
+  { key: "All", label: "All Orders" },
+  { key: "pending", label: "Pending" },
+  { key: "confirmed", label: "Confirmed" },
+  { key: "processing", label: "Processing" },
+  { key: "shipped", label: "Shipped" },
+  { key: "delivered", label: "Delivered" },
+  { key: "cancelled", label: "Cancelled" },
+];
 
-function SelectBox({ icon: Icon, value, onChange, options, label }) {
+const STATUS_STYLE = {
+  pending: { pill: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
+  confirmed: { pill: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  processing: { pill: "bg-slate-100 text-slate-600", dot: "bg-slate-500" },
+  shipped: { pill: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
+  delivered: { pill: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-600" },
+  cancelled: { pill: "bg-rose-100 text-rose-600", dot: "bg-rose-500" },
+};
+
+const PAYMENT_DOT = {
+  paid: "bg-emerald-500",
+  unpaid: "bg-amber-500",
+  pending: "bg-amber-500",
+  failed: "bg-rose-500",
+  refunded: "bg-slate-500",
+  partially_refunded: "bg-slate-500",
+};
+
+const DATE_RANGES = ["All Time", "Today", "Last 7 Days", "Last 30 Days"];
+
+const formatPrice = (n) =>
+  `₱${Number(n || 0).toLocaleString("en-PH", { maximumFractionDigits: 2 })}`;
+
+const label = (s) =>
+  String(s ?? "")
+    .replace(/_/g, " ")
+    .replace(/^\w/, (c) => c.toUpperCase());
+
+const formatDate = (iso) =>
+  iso
+    ? new Date(iso).toLocaleString("en-PH", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "—";
+
+const isToday = (iso) =>
+  iso && new Date(iso).toDateString() === new Date().toDateString();
+
+/* ---- Defensive readers: shipping_address (jsonb) and order_items
+   column names are not confirmed, so we try the common variants. ---- */
+function customerName(o) {
+  const a = o.shipping_address ?? {};
   return (
-<<<<<<< HEAD
-    <div className="relative">
-=======
-    <div className="relative shrink-0">
->>>>>>> origin/Kael
-      <Icon
-        size={13}
-        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
-      />
-<<<<<<< HEAD
-=======
+    a.full_name ??
+    a.fullName ??
+    a.name ??
+    a.recipient_name ??
+    [a.first_name, a.last_name].filter(Boolean).join(" ") ??
+    ""
+  ) || o.customer_email || "Customer";
+}
 
->>>>>>> origin/Kael
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
-        className="h-9 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/Kael
-      <ChevronDown
-        size={12}
-        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
-      />
-    </div>
+function customerLocation(o) {
+  const a = o.shipping_address ?? {};
+  return (
+    [a.city ?? a.municipality, a.province ?? a.state].filter(Boolean).join(", ") ||
+    a.address ||
+    a.address_line1 ||
+    "—"
   );
 }
 
-function ActionButton({ type }) {
-  const base =
-<<<<<<< HEAD
-    'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-center text-[10px] font-semibold leading-tight';
-
-  if (type === 'ship') {
-    return (
-      <button className={`${base} w-16 bg-blue-600 text-white hover:bg-blue-700`}>
-        View /<br />
-=======
-    'inline-flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-center text-[10px] font-semibold leading-tight';
-
-  if (type === 'ship') {
-    return (
-      <button
-        type="button"
-        className={`${base} w-16 bg-blue-600 text-white hover:bg-blue-700`}
-      >
-        View /
-        <br />
->>>>>>> origin/Kael
-        Ship
-      </button>
-    );
-  }
-
-  if (type === 'label') {
-    return (
-<<<<<<< HEAD
-      <button className={`${base} bg-blue-50 text-blue-700 hover:bg-blue-100`}>
-=======
-      <button
-        type="button"
-        className={`${base} bg-blue-50 text-blue-700 hover:bg-blue-100`}
-      >
->>>>>>> origin/Kael
-        <Printer size={12} />
-        <span>
-          Print
-          <br />
-          Label
-        </span>
-      </button>
-    );
-  }
-
-  if (type === 'track') {
-    return (
-<<<<<<< HEAD
-      <button className={`${base} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
-=======
-      <button
-        type="button"
-        className={`${base} bg-slate-100 text-slate-700 hover:bg-slate-200`}
-      >
->>>>>>> origin/Kael
-        <Send size={11} />
-        Track
-      </button>
-    );
-  }
-
+function itemName(it) {
   return (
-<<<<<<< HEAD
-    <button className={`${base} bg-slate-100 text-slate-700 hover:bg-slate-200`}>
-=======
-    <button
-      type="button"
-      className={`${base} bg-slate-100 text-slate-700 hover:bg-slate-200`}
-    >
->>>>>>> origin/Kael
-      Details
-    </button>
+    it.product_name ?? it.name ?? it.title ?? it.sku ?? it.products?.name ?? "Item"
   );
 }
+const itemQty = (it) => it.quantity ?? it.qty ?? 1;
+const itemTotal = (it) =>
+  it.line_total ?? it.total ?? it.total_price ?? it.subtotal ?? null;
 
-/* ---------- Page ---------- */
+function toOrder(row) {
+  return {
+    ...row,
+    items: row.order_items ?? [],
+    _name: customerName(row),
+    _location: customerLocation(row),
+  };
+}
 
-export default function AdminOrderFulfillment() {
-  const [activeTab, setActiveTab] = useState('All');
-  const [query, setQuery] = useState('');
-  const [range, setRange] = useState('Last 7 Days');
-  const [warehouse, setWarehouse] = useState('All Warehouses');
+/* ---- Which staff actions are valid for an order right now ---- */
+function getActions(o) {
+  const s = o.order_status;
+  const actions = [];
+
+  if (s === "pending") {
+    actions.push({
+      key: "confirm",
+      label: "Confirm",
+      tone: "primary",
+      call: () => RPC.confirm(o.id),
+      title: "Confirm this order?",
+      body: "This checks stock for every item and deducts it. If any item is short, nothing is deducted and the order stays pending.",
+    });
+  }
+  if (s === "confirmed") {
+    actions.push({
+      key: "processing",
+      label: "Start Processing",
+      tone: "primary",
+      call: () => RPC.fulfill(o.id, "processing"),
+    });
+  }
+  if (s === "processing") {
+    actions.push({
+      key: "shipped",
+      label: "Mark Shipped",
+      tone: "primary",
+      call: () => RPC.fulfill(o.id, "shipped"),
+    });
+  }
+  if (s === "shipped") {
+    actions.push({
+      key: "delivered",
+      label: "Mark Delivered",
+      tone: "primary",
+      call: () => RPC.fulfill(o.id, "delivered"),
+    });
+  }
+  if (s === "delivered" && o.payment_status !== "paid") {
+    actions.push({
+      key: "collect",
+      label: "Record COD",
+      tone: "success",
+      call: () => RPC.collect(o.id),
+      title: "Record COD collection?",
+      body: "This marks the order as paid. Only do this once the cash has been received.",
+    });
+  }
+  if (s === "pending" || s === "confirmed") {
+    actions.push({
+      key: "cancel",
+      label: "Cancel",
+      tone: "danger",
+      call: () => RPC.cancel(o.id),
+      title: "Cancel this order?",
+      body:
+        s === "confirmed"
+          ? "Stock that was deducted on confirmation will be restored."
+          : "The order will be cancelled. No stock was deducted yet.",
+    });
+  }
+  return actions;
+}
+
+const TONE = {
+  primary: "bg-blue-600 text-white hover:bg-blue-700",
+  success: "bg-emerald-600 text-white hover:bg-emerald-700",
+  danger: "border border-rose-200 bg-white text-rose-600 hover:bg-rose-50",
+};
+
+export default function AdminOrderFulfillment({ onLogout }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [notice, setNotice] = useState(null); // { type, text }
+  const [activeTab, setActiveTab] = useState("All");
+  const [query, setQuery] = useState("");
+  const [range, setRange] = useState("All Time");
   const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [confirming, setConfirming] = useState(null); // { order, action }
+
+  async function loadOrders() {
+    setLoading(true);
+    setLoadError("");
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, order_items(*)")
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    if (error) {
+      setLoadError(error.message);
+      setOrders([]);
+    } else {
+      setOrders((data ?? []).map(toOrder));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  async function runAction(order, action) {
+    setConfirming(null);
+    setBusyId(order.id);
+
+    const [fn, args] = action.call();
+    const { error } = await supabase.rpc(fn, args);
+
+    setBusyId(null);
+
+    if (error) {
+      setNotice({
+        type: "error",
+        text: `${action.label} failed on ${order.order_number}: ${error.message}`,
+      });
+      return;
+    }
+
+    setNotice({
+      type: "success",
+      text: `${action.label} done for ${order.order_number}.`,
+    });
+    await loadOrders();
+  }
+
+  function onActionClick(order, action) {
+    if (action.title) setConfirming({ order, action });
+    else runAction(order, action);
+  }
+
+  /* ---- Summary numbers (computed from real data) ---- */
+  const stats = useMemo(() => {
+    const by = (s) => orders.filter((o) => o.order_status === s);
+    const deliveredToday = by("delivered").filter((o) => isToday(o.updated_at));
+    return {
+      pending: by("pending").length,
+      inProgress: by("confirmed").length + by("processing").length,
+      shipped: by("shipped").length,
+      deliveredToday: deliveredToday.length,
+      deliveredTodayTotal: deliveredToday.reduce((s, o) => s + Number(o.total || 0), 0),
+      awaitingCod: by("delivered").filter((o) => o.payment_status !== "paid").length,
+    };
+  }, [orders]);
+
+  const tabCounts = useMemo(() => {
+    const counts = { All: orders.length };
+    orders.forEach((o) => {
+      counts[o.order_status] = (counts[o.order_status] ?? 0) + 1;
+    });
+    return counts;
+  }, [orders]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const now = Date.now();
+    const days = { Today: 1, "Last 7 Days": 7, "Last 30 Days": 30 }[range];
 
     return orders.filter((o) => {
-      const matchesTab = activeTab === 'All' || o.status === activeTab;
+      if (activeTab !== "All" && o.order_status !== activeTab) return false;
 
-      const matchesQuery =
-        !q ||
-        o.id.toLowerCase().includes(q) ||
-        o.customer.toLowerCase().includes(q) ||
-        o.location.toLowerCase().includes(q) ||
-        o.item.toLowerCase().includes(q);
+      if (range === "Today" && !isToday(o.created_at)) return false;
+      if (days && range !== "Today") {
+        if (now - new Date(o.created_at).getTime() > days * 86400000) return false;
+      }
 
-      return matchesTab && matchesQuery;
+      if (!q) return true;
+      return (
+        String(o.order_number ?? "").toLowerCase().includes(q) ||
+        String(o.customer_email ?? "").toLowerCase().includes(q) ||
+        o._name.toLowerCase().includes(q) ||
+        o._location.toLowerCase().includes(q) ||
+        o.items.some((it) => itemName(it).toLowerCase().includes(q))
+      );
     });
-  }, [activeTab, query]);
+  }, [orders, activeTab, query, range]);
 
-<<<<<<< HEAD
-  const isFiltering = activeTab !== 'All' || query;
-=======
-  const isFiltering = activeTab !== 'All' || query.trim() !== '';
->>>>>>> origin/Kael
-  const pageNumbers = [1, 2, 3, '...', 17];
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
 
-  const exportCsv = () => {
+  function exportCsv() {
     const header = [
-      'Order ID',
-      'Date',
-      'Customer',
-      'Location',
-      'Items',
-      'Payment',
-      'Total',
-      'Status',
+      "Order #", "Date", "Customer", "Email", "Location",
+      "Items", "Payment Status", "Total", "Order Status",
     ];
-
     const rows = filtered.map((o) => [
-      o.id,
-      o.when,
-      o.customer,
-      o.location,
-      `${o.qty ? `${o.qty}x ` : ''}${o.item}`,
-      o.payment,
+      o.order_number,
+      o.created_at,
+      o._name,
+      o.customer_email,
+      o._location,
+      o.items.map((it) => `${itemQty(it)}x ${itemName(it)}`).join("; "),
+      o.payment_status,
       o.total,
-      o.status,
+      o.order_status,
     ]);
-
     const csv = [header, ...rows]
-      .map((r) =>
-        r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','),
-      )
-      .join('\n');
-
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
-    );
-
-    const a = document.createElement('a');
+      .map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'orders.csv';
+    a.download = "orders.csv";
     a.click();
-
     URL.revokeObjectURL(url);
-  };
+  }
+
+  const cards = [
+    {
+      title: "Awaiting Confirmation",
+      value: stats.pending,
+      note: "Pending COD orders",
+      icon: ClipboardList,
+      iconStyle: "bg-orange-50 text-orange-600",
+    },
+    {
+      title: "Confirmed / Processing",
+      value: stats.inProgress,
+      note: "Being prepared for shipping",
+      icon: Package,
+      iconStyle: "bg-blue-50 text-blue-600",
+    },
+    {
+      title: "Shipped",
+      value: stats.shipped,
+      note: "Out for delivery",
+      icon: Truck,
+      iconStyle: "bg-sky-50 text-sky-600",
+    },
+    {
+      title: "Delivered Today",
+      value: stats.deliveredToday,
+      note: `${formatPrice(stats.deliveredTodayTotal)} · ${stats.awaitingCod} awaiting COD`,
+      icon: CheckCircle2,
+      iconStyle: "bg-emerald-50 text-emerald-600",
+    },
+  ];
 
   return (
-    <AdminLayout>
-<<<<<<< HEAD
+    <AdminLayout onLogout={onLogout}>
       {/* Heading */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Order Fulfillment</h1>
-
-            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-              Live Dispatch
-            </span>
-          </div>
-
+          <h1 className="text-2xl font-bold">Order Fulfillment</h1>
           <p className="mt-1 max-w-md text-xs text-slate-500">
-            Full System Access • Process customer orders, verify payments, generate shipping
-            labels, and track deliveries.
+            Confirm COD orders, move them through fulfillment, and record cash
+            collection after delivery.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={exportCsv}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold leading-tight text-slate-700 hover:bg-slate-50"
+            disabled={loading || filtered.length === 0}
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             <Download size={13} />
-            <span>
-              Export Orders
-              <br />
-              (CSV)
-            </span>
+            Export CSV
           </button>
-
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-left text-xs font-semibold leading-tight text-white hover:bg-blue-700"
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
           >
             <Printer size={14} />
-            <span>
-              Print Packing
-              <br />
-              Slips
-            </span>
+            Print
           </button>
         </div>
       </div>
 
       {/* Summary cards */}
       <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summaryCards.map(
-          ({
-            label,
-            value,
-            note,
-            noteDot,
-            footer,
-            footerStyle,
-            footerIcon: FooterIcon,
-            icon: Icon,
-            iconStyle,
-          }) => (
-            <div key={label} className="rounded-xl bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-medium uppercase leading-tight tracking-wide text-slate-500">
-                  {label}
-                </p>
-
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconStyle}`}
-                >
-                  <Icon size={15} />
-                </span>
-              </div>
-
-              <p className="mt-2 text-2xl font-bold">{value}</p>
-
-              <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500">
-                <span className={`h-1.5 w-1.5 rounded-full ${noteDot}`} />
-                {note}
-              </p>
-
-              <div
-                className={`mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-semibold ${footerStyle}`}
-              >
-                <span>{footer}</span>
-                <FooterIcon size={12} />
-              </div>
+        {cards.map(({ title, value, note, icon: Icon, iconStyle }) => (
+          <div key={title} className="rounded-xl bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-medium text-slate-600">{title}</p>
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconStyle}`}>
+                <Icon size={15} />
+              </span>
             </div>
-          ),
-        )}
+            <p className="mt-2 text-2xl font-bold">{loading ? "…" : value}</p>
+            <p className="mt-1 text-[10px] text-slate-500">{note}</p>
+          </div>
+        ))}
       </section>
+
+      {/* Errors / notices */}
+      {loadError && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
+          <span>Could not load orders: {loadError}</span>
+          <button onClick={loadOrders} className="shrink-0 font-semibold hover:underline">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {notice && (
+        <div
+          className={`mt-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs ${
+            notice.type === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}
+        >
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="shrink-0 font-semibold hover:underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        {tabs.map((t) => (
+        {TABS.map((t) => (
           <button
-            key={t.label}
-            onClick={() => setActiveTab(t.status)}
+            key={t.key}
+            onClick={() => {
+              setActiveTab(t.key);
+              setPage(1);
+            }}
             className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-              activeTab === t.status
-                ? 'bg-blue-700 text-white'
-                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              activeTab === t.key
+                ? "bg-blue-700 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
             }`}
           >
-            {t.label}
+            {t.label} ({tabCounts[t.key] ?? 0})
           </button>
         ))}
       </div>
 
       {/* Table card */}
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex h-9 min-w-60 flex-1 items-center gap-2 rounded-lg bg-blue-50 px-3">
             <Search size={14} className="text-slate-500" />
-
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by Order #, Customer Name, Contact, or Tracking Number..."
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by order #, customer, email, location, or item..."
               className="w-full bg-transparent text-xs text-slate-700 placeholder-slate-400 outline-none"
             />
           </div>
 
-          <SelectBox
-            icon={Calendar}
-            label="Date range"
-            value={range}
-            onChange={setRange}
-            options={['Today', 'Last 7 Days', 'Last 30 Days']}
-          />
-
-          <SelectBox
-            icon={Warehouse}
-            label="Warehouse"
-            value={warehouse}
-            onChange={setWarehouse}
-            options={['All Warehouses', 'Manila Central Hub', 'Cebu Hub']}
-          />
-
-          <button
-            aria-label="More filters"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-          >
-            <SlidersHorizontal size={14} />
-          </button>
+          <div className="relative">
+            <Calendar
+              size={13}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"
+            />
+            <select
+              value={range}
+              onChange={(e) => {
+                setRange(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Date range"
+              className="h-9 cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+            >
+              {DATE_RANGES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <ChevronDown
+              size={12}
+              className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+            />
+          </div>
         </div>
 
-        {/* Table */}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-230 text-left">
             <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500">
-                <th className="py-3 pr-3">
-                  Order ID &amp;
-                  <br />
-                  Date
-                </th>
-
+              <tr className="border-b border-slate-100 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                <th className="py-3 pr-3">Order</th>
                 <th className="px-3 py-3">Customer</th>
-                <th className="px-3 py-3">Items &amp; Breakdown</th>
-
-                <th className="px-3 py-3">
-                  Payment
-                  <br />
-                  Method
-                </th>
-
-                <th className="px-3 py-3">
-                  Total
-                  <br />
-                  Amount (₱)
-                </th>
-
-                <th className="px-3 py-3">
-                  Fulfillment
-                  <br />
-                  Status
-                </th>
-
+                <th className="px-3 py-3">Items</th>
+                <th className="px-3 py-3">Payment</th>
+                <th className="px-3 py-3">Total</th>
+                <th className="px-3 py-3">Status</th>
                 <th className="py-3 pl-3 text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {filtered.map((o) => {
-                const Icon = o.icon;
-                const st = statusStyle[o.status];
+              {loading && (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-xs text-slate-500">
+                    Loading orders…
+                  </td>
+                </tr>
+              )}
 
-                return (
-                  <tr key={o.id} className="border-b border-slate-50 last:border-0">
-                    <td className="py-3 pr-3">
-                      <div className="flex items-center gap-2.5">
-                        <span
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${o.iconStyle}`}
-                        >
-                          <Icon size={13} />
-                        </span>
+              {!loading &&
+                visible.map((o) => {
+                  const st = STATUS_STYLE[o.order_status] ?? STATUS_STYLE.processing;
+                  const first = o.items[0];
+                  const open = expanded === o.id;
+                  const actions = getActions(o);
 
-                        <div>
-                          <p className="text-xs font-bold">{o.id}</p>
-                          <p className="text-[10px] text-slate-500">{o.when}</p>
-                        </div>
-                      </div>
-                    </td>
+                  return (
+                    <Fragment key={o.id}>
+                      <tr className="border-b border-slate-50">
+                        <td className="py-3 pr-3">
+                          <button
+                            onClick={() => setExpanded(open ? null : o.id)}
+                            className="flex items-center gap-2 text-left"
+                            aria-expanded={open}
+                          >
+                            {open ? (
+                              <ChevronUp size={13} className="text-slate-400" />
+                            ) : (
+                              <ChevronDown size={13} className="text-slate-400" />
+                            )}
+                            <span>
+                              <p className="text-xs font-bold">{o.order_number}</p>
+                              <p className="text-[10px] text-slate-500">
+                                {formatDate(o.created_at)}
+                              </p>
+                            </span>
+                          </button>
+                        </td>
 
-                    <td className="px-3 py-3">
-                      <p className="text-xs font-bold">{o.customer}</p>
-                      <p className="text-[10px] text-slate-500">{o.location}</p>
-                    </td>
+                        <td className="px-3 py-3">
+                          <p className="text-xs font-bold">{o._name}</p>
+                          <p className="text-[10px] text-slate-500">{o._location}</p>
+                        </td>
 
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5 text-xs text-slate-700">
-                        {o.qty && (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                            {o.qty}x
+                        <td className="px-3 py-3 text-xs text-slate-700">
+                          {first ? (
+                            <>
+                              <span className="mr-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                {itemQty(first)}x
+                              </span>
+                              {itemName(first)}
+                              {o.items.length > 1 && (
+                                <span className="ml-1 text-[10px] text-slate-500">
+                                  +{o.items.length - 1} more
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-slate-400">No items</span>
+                          )}
+                        </td>
+
+                        <td className="px-3 py-3">
+                          <span className="inline-flex items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                PAYMENT_DOT[o.payment_status] ?? "bg-slate-400"
+                              }`}
+                            />
+                            COD · {label(o.payment_status)}
                           </span>
-                        )}
+                        </td>
 
-                        <span>{o.item}</span>
-                      </div>
+                        <td className="px-3 py-3 text-xs font-bold">
+                          {formatPrice(o.total)}
+                        </td>
 
-                      {o.note && (
-                        <p className="mt-0.5 text-[10px] text-slate-500">
-                          {o.note}
-                        </p>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${st.pill}`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                            {label(o.order_status)}
+                          </span>
+                        </td>
+
+                        <td className="py-3 pl-3">
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            {actions.length === 0 && (
+                              <span className="text-[10px] text-slate-400">No actions</span>
+                            )}
+                            {actions.map((a) => (
+                              <button
+                                key={a.key}
+                                disabled={busyId === o.id}
+                                onClick={() => onActionClick(o, a)}
+                                className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10px] font-semibold disabled:opacity-50 ${TONE[a.tone]}`}
+                              >
+                                {busyId === o.id ? "Working…" : a.label}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {open && (
+                        <tr className="border-b border-slate-50 bg-slate-50/60">
+                          <td colSpan={7} className="px-4 py-3">
+                            <div className="grid gap-4 text-xs md:grid-cols-2">
+                              <div>
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Items
+                                </p>
+                                {o.items.length === 0 && (
+                                  <p className="text-slate-400">No line items found.</p>
+                                )}
+                                {o.items.map((it, i) => (
+                                  <div
+                                    key={it.id ?? i}
+                                    className="flex justify-between gap-3 border-b border-slate-100 py-1 last:border-0"
+                                  >
+                                    <span>
+                                      {itemQty(it)}x {itemName(it)}
+                                    </span>
+                                    <span className="font-semibold">
+                                      {itemTotal(it) != null ? formatPrice(itemTotal(it)) : "—"}
+                                    </span>
+                                  </div>
+                                ))}
+                                <div className="mt-2 space-y-0.5 text-[11px] text-slate-600">
+                                  <p>Subtotal: {formatPrice(o.subtotal)}</p>
+                                  {Number(o.automatic_discount_total) > 0 && (
+                                    <p>Automatic discount: −{formatPrice(o.automatic_discount_total)}</p>
+                                  )}
+                                  {Number(o.promo_code_discount_total) > 0 && (
+                                    <p>Promo code: −{formatPrice(o.promo_code_discount_total)}</p>
+                                  )}
+                                  {Number(o.other_discount_total) > 0 && (
+                                    <p>Other discount: −{formatPrice(o.other_discount_total)}</p>
+                                  )}
+                                  <p className="font-bold text-slate-800">
+                                    Total: {formatPrice(o.total)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Ship to
+                                </p>
+                                <p className="text-slate-700">{o.customer_email}</p>
+                                {o.shipping_address &&
+                                  Object.entries(o.shipping_address).map(([k, v]) =>
+                                    v ? (
+                                      <p key={k} className="text-slate-600">
+                                        <span className="text-slate-400">{label(k)}: </span>
+                                        {String(v)}
+                                      </p>
+                                    ) : null
+                                  )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <span className="inline-flex items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-[10px] font-semibold text-slate-700">
-                        {o.payment.includes('Card') ? (
-                          <CreditCard size={11} className="text-blue-600" />
-                        ) : (
-                          <span className={`h-1.5 w-1.5 rounded-full ${o.payDot}`} />
-                        )}
-
-                        {o.payment}
-                      </span>
-                    </td>
-
-                    <td className="px-3 py-3 text-xs font-bold">
-                      {formatPrice(o.total)}
-                    </td>
-
-                    <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${st.pill}`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-                        {o.status}
-                        {o.statusNote && ` • ${o.statusNote}`}
-                      </span>
-                    </td>
-
-                    <td className="py-3 pl-3">
-                      <div className="flex justify-end">
-                        <ActionButton type={o.action} />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </Fragment>
+                  );
+                })}
             </tbody>
           </table>
         </div>
 
-        {filtered.length === 0 && (
-          <p className="py-10 text-center text-sm text-slate-500">
-            No orders match this tab or search. Try another status or clear the search box.
-          </p>
+        {!loading && filtered.length === 0 && (
+          <div className="py-10 text-center text-sm text-slate-500">
+            {orders.length === 0 && !loadError ? (
+              <>
+                <p>No orders returned.</p>
+                <p className="mx-auto mt-1 flex max-w-md items-center justify-center gap-1.5 text-xs text-amber-700">
+                  <AlertTriangle size={12} />
+                  If orders exist in Supabase, your staff account may lack read access (RLS) on the orders table.
+                </p>
+              </>
+            ) : (
+              "No orders match this tab or search."
+            )}
+          </div>
         )}
 
-        {/* Table footer */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-          {isFiltering ? (
+        {/* Footer / pagination */}
+        {!loading && filtered.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
             <p>
-              Showing <b className="text-slate-800">{filtered.length}</b> matching{' '}
-              {filtered.length === 1 ? 'order' : 'orders'}
+              Showing{" "}
+              <b className="text-slate-800">
+                {(currentPage - 1) * PAGE_SIZE + 1}–
+                {Math.min(currentPage * PAGE_SIZE, filtered.length)}
+              </b>{" "}
+              of <b className="text-slate-800">{filtered.length}</b> orders
             </p>
-          ) : (
-            <p>
-              Showing <b className="text-slate-800">1</b> to{' '}
-              <b className="text-slate-800">6</b> of{' '}
-              <b className="text-slate-800">98</b> recorded orders
-            </p>
-          )}
 
-          {!isFiltering && (
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
+                disabled={currentPage === 1}
                 className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-400 enabled:text-slate-700 enabled:hover:bg-slate-200"
-=======
-      <div className="w-full min-w-0 text-slate-800">
-        {/* Heading */}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold">
-                Order Fulfillment
-              </h1>
-
-              <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-700">
-                Live Dispatch
-              </span>
-            </div>
-
-            <p className="mt-1 max-w-md text-xs text-slate-500">
-              Full System Access • Process customer orders, verify payments,
-              generate shipping labels, and track deliveries.
-            </p>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold leading-tight text-slate-700 hover:bg-slate-50"
-            >
-              <Download size={13} />
-              <span>
-                Export Orders
-                <br />
-                (CSV)
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-left text-xs font-semibold leading-tight text-white hover:bg-blue-700"
-            >
-              <Printer size={14} />
-              <span>
-                Print Packing
-                <br />
-                Slips
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Summary cards */}
-        <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map(
-            ({
-              label,
-              value,
-              note,
-              noteDot,
-              footer,
-              footerStyle,
-              footerIcon: FooterIcon,
-              icon: Icon,
-              iconStyle,
-            }) => (
-              <div
-                key={label}
-                className="flex min-h-39.5 flex-col rounded-xl bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-medium uppercase leading-tight tracking-wide text-slate-500">
-                    {label}
-                  </p>
-
-                  <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconStyle}`}
-                  >
-                    <Icon size={15} />
-                  </span>
-                </div>
-
-                <p className="mt-2 text-2xl font-bold">{value}</p>
-
-                <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${noteDot}`} />
-                  {note}
-                </p>
-
-                <div
-                  className={`mt-auto flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-semibold ${footerStyle}`}
-                >
-                  <span>{footer}</span>
-                  <FooterIcon size={12} />
-                </div>
-              </div>
-            ),
-          )}
-        </section>
-
-        {/* Status tabs: one line, horizontally scrollable */}
-        <div className="mt-5 overflow-x-auto pb-1">
-          <div className="flex w-max min-w-full flex-nowrap items-center gap-2">
-            {tabs.map((t) => (
-              <button
-                key={t.label}
-                type="button"
-                onClick={() => {
-                  setActiveTab(t.status);
-                  setPage(1);
-                }}
-                aria-pressed={activeTab === t.status}
-                className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  activeTab === t.status
-                    ? 'bg-blue-700 text-white'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Table card */}
-        <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-          {/* Filters */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex h-9 min-w-50 flex-1 items-center gap-2 rounded-lg bg-blue-50 px-3">
-              <Search size={14} className="shrink-0 text-slate-500" />
-
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search by Order #, Customer Name, Contact, or Tracking Number..."
-                aria-label="Search orders"
-                className="w-full min-w-0 bg-transparent text-xs text-slate-700 placeholder-slate-400 outline-none"
-              />
-            </div>
-
-            <SelectBox
-              icon={Calendar}
-              label="Date range"
-              value={range}
-              onChange={setRange}
-              options={['Today', 'Last 7 Days', 'Last 30 Days']}
-            />
-
-            <SelectBox
-              icon={Warehouse}
-              label="Warehouse"
-              value={warehouse}
-              onChange={setWarehouse}
-              options={[
-                'All Warehouses',
-                'Manila Central Hub',
-                'Cebu Hub',
-              ]}
-            />
-
-            <button
-              type="button"
-              aria-label="More filters"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-            >
-              <SlidersHorizontal size={14} />
-            </button>
-          </div>
-
-          {/* Fixed-height table viewport */}
-          <div className="mt-4 h-80 overflow-auto rounded-md">
-            <table className="w-full min-w-250 table-fixed text-left">
-              <colgroup>
-                <col className="w-[17%]" />
-                <col className="w-[17%]" />
-                <col className="w-[21%]" />
-                <col className="w-[17%]" />
-                <col className="w-[10%]" />
-                <col className="w-[12%]" />
-                <col className="w-[6%]" />
-              </colgroup>
-
-              <thead className="sticky top-0 z-10 bg-white">
-                <tr className="border-b border-slate-100 text-[10px] font-semibold uppercase leading-tight tracking-wide text-slate-500">
-                  <th className="py-3 pr-3">
-                    Order ID &amp;
-                    <br />
-                    Date
-                  </th>
-
-                  <th className="px-3 py-3">Customer</th>
-
-                  <th className="px-3 py-3">
-                    Items &amp; Breakdown
-                  </th>
-
-                  <th className="px-3 py-3">
-                    Payment
-                    <br />
-                    Method
-                  </th>
-
-                  <th className="px-3 py-3">
-                    Total
-                    <br />
-                    Amount (₱)
-                  </th>
-
-                  <th className="px-3 py-3">
-                    Fulfillment
-                    <br />
-                    Status
-                  </th>
-
-                  <th className="py-3 pl-3 text-right">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filtered.map((o) => {
-                  const Icon = o.icon;
-                  const st = statusStyle[o.status];
-
-                  return (
-                    <tr
-                      key={o.id}
-                      className="h-14.5 border-b border-slate-50 last:border-0"
-                    >
-                      <td className="py-3 pr-3">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${o.iconStyle}`}
-                          >
-                            <Icon size={13} />
-                          </span>
-
-                          <div className="min-w-0">
-                            <p className="wrap-break-word text-xs font-bold">
-                              {o.id}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              {o.when}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <p className="wrap-break-word text-xs font-bold">
-                          {o.customer}
-                        </p>
-                        <p className="wrap-break-word text-[10px] text-slate-500">
-                          {o.location}
-                        </p>
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5 text-xs text-slate-700">
-                          {o.qty && (
-                            <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-                              {o.qty}x
-                            </span>
-                          )}
-
-                          <span className="wrap-break-word">{o.item}</span>
-                        </div>
-
-                        {o.note && (
-                          <p className="mt-0.5 wrap-break-word text-[10px] text-slate-500">
-                            {o.note}
-                          </p>
-                        )}
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <span className="inline-flex max-w-full items-center gap-1.5 rounded bg-blue-50 px-2 py-1 text-[10px] font-semibold text-slate-700">
-                          {o.payment.includes('Card') ? (
-                            <CreditCard
-                              size={11}
-                              className="shrink-0 text-blue-600"
-                            />
-                          ) : (
-                            <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${o.payDot}`}
-                            />
-                          )}
-
-                          <span className="wrap-break-word">
-                            {o.payment}
-                          </span>
-                        </span>
-                      </td>
-
-                      <td className="px-3 py-3 text-xs font-bold">
-                        {formatPrice(o.total)}
-                      </td>
-
-                      <td className="px-3 py-3">
-                        <span
-                          className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold ${st.pill}`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`}
-                          />
-                          <span className="wrap-break-word">
-                            {o.status}
-                            {o.statusNote && ` • ${o.statusNote}`}
-                          </span>
-                        </span>
-                      </td>
-
-                      <td className="py-3 pl-3">
-                        <div className="flex justify-end">
-                          <ActionButton type={o.action} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {/* Empty state stays inside the fixed-height viewport */}
-            {filtered.length === 0 && (
-              <div className="flex min-h-55 items-center justify-center px-4 text-center text-xs text-slate-500">
-                No orders match this tab or search. Try another status or
-                clear the search box.
-              </div>
-            )}
-          </div>
-
-          {/* Stable table footer and pagination */}
-          <div className="mt-4 flex min-h-8 flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-            {isFiltering ? (
-              <p>
-                Showing{' '}
-                <b className="text-slate-800">{filtered.length}</b>{' '}
-                matching{' '}
-                {filtered.length === 1 ? 'order' : 'orders'}
-              </p>
-            ) : (
-              <p>
-                Showing <b className="text-slate-800">1</b> to{' '}
-                <b className="text-slate-800">{filtered.length}</b> of{' '}
-                <b className="text-slate-800">98</b> recorded orders
-              </p>
-            )}
-
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-400 enabled:text-slate-700 enabled:hover:bg-slate-200 disabled:cursor-not-allowed"
->>>>>>> origin/Kael
               >
                 Previous
               </button>
-
-              {pageNumbers.map((n, i) =>
-                n === '...' ? (
-                  <span key={`gap-${i}`} className="px-1">
-                    ...
-                  </span>
-                ) : (
-                  <button
-                    key={n}
-<<<<<<< HEAD
-                    onClick={() => setPage(n)}
-=======
-                    type="button"
-                    onClick={() => setPage(n)}
-                    aria-current={page === n ? 'page' : undefined}
->>>>>>> origin/Kael
-                    className={`h-7 w-7 rounded-md text-xs font-semibold ${
-                      page === n
-                        ? 'bg-blue-700 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ),
-              )}
-
+              <span className="px-2">
+                Page {currentPage} of {pageCount}
+              </span>
               <button
-<<<<<<< HEAD
-                onClick={() => setPage((p) => Math.min(17, p + 1))}
-                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-=======
-                type="button"
-                onClick={() => setPage((p) => Math.min(17, p + 1))}
-                disabled={page === 17}
-                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
->>>>>>> origin/Kael
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={currentPage === pageCount}
+                className="rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-400 enabled:text-slate-700 enabled:hover:bg-slate-200"
               >
                 Next
               </button>
             </div>
-<<<<<<< HEAD
-          )}
-        </div>
+          </div>
+        )}
       </section>
+
+      {/* Confirmation modal */}
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+          >
+            <h3 className="text-sm font-bold text-slate-800">
+              {confirming.action.title}
+            </h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {confirming.order.order_number} · {confirming.order._name}
+            </p>
+            <p className="mt-3 text-xs text-slate-600">{confirming.action.body}</p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirming(null)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Go back
+              </button>
+              <button
+                onClick={() => runAction(confirming.order, confirming.action)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                  confirming.action.tone === "danger"
+                    ? "bg-rose-600 text-white hover:bg-rose-700"
+                    : TONE[confirming.action.tone]
+                }`}
+              >
+                {confirming.action.label}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Page footer */}
       <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-3 text-[10px] text-slate-500 shadow-sm">
         <p>© 2026 TechHub Inc. All rights reserved.</p>
-
         <div className="flex items-center gap-3">
-          <a href="#" className="hover:text-blue-600">
-            Privacy Policy
-          </a>
-
+          <a href="#" className="hover:text-blue-600">Privacy Policy</a>
           <span className="text-slate-300">|</span>
-
-          <a href="#" className="hover:text-blue-600">
-            Terms of Service
-          </a>
-
+          <a href="#" className="hover:text-blue-600">Terms of Service</a>
           <span className="text-slate-300">|</span>
-
-          <a href="#" className="hover:text-blue-600">
-            Support Center
-          </a>
+          <a href="#" className="hover:text-blue-600">Support Center</a>
         </div>
       </footer>
-=======
-          </div>
-        </section>
-
-        {/* Page footer */}
-        <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white px-5 py-3 text-[10px] text-slate-500 shadow-sm">
-          <p>© 2026 TechHub Inc. All rights reserved.</p>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <a href="#" className="hover:text-blue-600">
-              Privacy Policy
-            </a>
-
-            <span className="text-slate-300">|</span>
-
-            <a href="#" className="hover:text-blue-600">
-              Terms of Service
-            </a>
-
-            <span className="text-slate-300">|</span>
-
-            <a href="#" className="hover:text-blue-600">
-              Support Center
-            </a>
-          </div>
-        </footer>
-      </div>
->>>>>>> origin/Kael
     </AdminLayout>
   );
 }

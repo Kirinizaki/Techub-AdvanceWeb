@@ -17,7 +17,7 @@ import TechubLogo from '../assets/TechubLogo.png';
 
 const productSubLinks = [
   { label: 'Products Catalog', href: '/admin/products' },
-  { label: 'Price Management', href: '/admin/price-management' },
+  { label: 'Price Management', href: '/admin/pricing' },
   { label: 'Inventory & SKU', href: '/admin/inventory' },
 ];
 
