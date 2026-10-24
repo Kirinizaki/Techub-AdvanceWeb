@@ -86,16 +86,24 @@ export async function signInWithEmail({ email, password }) {
   }
 
   // Authenticate using the resolved email and password.
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: loginEmail,
-    password,
+ 
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: loginEmail,
+  password,
+});
+
+if (error) {
+  console.error("Supabase sign-in error:", {
+    message: error.message,
+    status: error.status,
+    code: error.code,
   });
 
-  if (error) {
-    throw new Error("Invalid username/email or password.");
-  }
+  throw error;
+}
 
-  return data;
+return { user: data.user };
+
 }
 
 export async function requestPasswordReset(email) {

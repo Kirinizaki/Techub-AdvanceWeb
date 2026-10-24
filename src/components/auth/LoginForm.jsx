@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, AlertCircle } from "lucide-react";
 import { signInWithEmail } from "../../services/authService";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginForm() {
   const navigate = useNavigate();
@@ -27,27 +28,46 @@ export default function LoginForm() {
 
     setLoading(true);
 
-    try {
-      await signInWithEmail({
-        email: identifier,
-        password,
-      });
+   
+try {
+  const { user } = await signInWithEmail({
+    email: identifier,
+    password,
+  });
 
-      // Supabase persists the session using the client defaults.
-      // The Remember me option will be wired up separately.
-      navigate("/");
-    } catch (error) {
-      console.error("Login error:", error);
+  if (!user) {
+    throw new Error("Login succeeded, but no user was returned.");
+  }
 
-      setErrorMessage(
-        error.message === "Invalid login credentials"
-          ? "The email or password is incorrect."
-          : error.message ||
-              "We couldn't sign you in. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
+  // Look up the role for the authenticated user.
+  const { data: roleData, error: roleError } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (roleError) {
+    throw new Error("Unable to verify your account role.");
+  }
+
+  if (roleData?.role === "admin") {
+    navigate("/admin", { replace: true });
+  } else {
+    navigate("/", { replace: true });
+  }
+} catch (error) {
+  console.error("Login error:", error);
+
+  setErrorMessage(
+    error.message === "Invalid login credentials"
+      ? "The email or password is incorrect."
+      : error.message ||
+          "We couldn't sign you in. Please try again."
+  );
+} finally {
+  setLoading(false);
+}
+
   };
 
   return (
