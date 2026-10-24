@@ -149,7 +149,11 @@ const marginOptions = [
   "Above 30%",
 ];
 
+<<<<<<< HEAD
 export default function AdminPriceManagement({ onLogout }) {
+=======
+export default function AdminPriceManagement() {
+>>>>>>> origin/Kael
   const [products, setProducts] = useState(initialProducts);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All Categories");
