@@ -335,7 +335,8 @@ export default function AdminReportsAnalytics({ onLogout }) {
     });
 
     if (rpcError) {
-      setError(rpcError.message);
+      console.error("Report load failed:", rpcError);
+      setError("Could not load this report. Try again in a moment.");
       setReport(null);
     } else {
       setReport(data);
@@ -522,9 +523,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
         {error && (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800">
             <span>
-              Could not load the report: {error}
-              {/could not find the function/i.test(error) &&
-                " Run admin_sales_report.sql in the Supabase SQL Editor first."}
+              {error}
             </span>
             <button onClick={loadReport} className="shrink-0 font-semibold hover:underline">
               Retry
@@ -534,9 +533,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
 
         {empty && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            No paid orders in this range. Revenue only counts orders where COD
-            collection has been recorded. If paid orders exist, your staff
-            account may lack read access (RLS) to orders.
+            No paid orders in this range. Revenue includes orders after payment collection has been recorded.
           </div>
         )}
 
@@ -544,7 +541,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             label="Total Gross Revenue"
-            value={loading ? "…" : peso(grossRevenue)}
+            value={loading ? "…" : error ? "—" : peso(grossRevenue)}
             change={fmtChange(revChange)}
             positive={(revChange ?? 0) >= 0}
             description="vs previous period"
@@ -553,7 +550,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
 
           <SummaryCard
             label="Paid Orders"
-            value={loading ? "…" : orderCount.toLocaleString()}
+            value={loading ? "…" : error ? "—" : orderCount.toLocaleString()}
             change={fmtChange(countChange)}
             positive={(countChange ?? 0) >= 0}
             description="vs previous period"
@@ -563,7 +560,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
 
           <SummaryCard
             label="Average Order Value (AOV)"
-            value={loading ? "…" : peso(aov)}
+            value={loading ? "…" : error ? "—" : peso(aov)}
             change={fmtChange(aovChange)}
             positive={(aovChange ?? 0) >= 0}
             description="vs previous period"
@@ -573,7 +570,7 @@ export default function AdminReportsAnalytics({ onLogout }) {
 
           <SummaryCard
             label="Return / Refund Rate"
-            value={loading ? "…" : `${refundRate.toFixed(1)}%`}
+            value={loading ? "…" : error ? "—" : `${refundRate.toFixed(1)}%`}
             change={loading ? null : `${refunded} refunded`}
             positive={refunded === 0}
             description={`of ${settled} settled orders`}

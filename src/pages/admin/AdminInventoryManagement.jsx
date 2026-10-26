@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -14,13 +14,13 @@ import {
 } from "lucide-react";
 import AdminLayout from "../../layouts/AdminLayout";
 import { supabase } from "../../lib/supabaseClient";
+import { edgeFunctionErrorMessage } from "../../lib/edgeFunctionErrors";
 
 /*
   Uses only columns that exist on public.products:
   id, sku, name, description, price, product_type, stock_quantity
 */
 const REORDER_POINT = 5; // at or below this = Low Stock
-const RESTOCK_AMOUNT = 10; // units added by the Restock button
 
 const money = (value) =>
   new Intl.NumberFormat("en-PH", {
@@ -84,12 +84,18 @@ function StockStatus({ stock }) {
 
 export default function AdminInventoryManagement({ onLogout }) {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState("");
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [restockingId, setRestockingId] = useState(null);
+  const [stockEditor, setStockEditor] = useState(null);
+  const [stockInput, setStockInput] = useState("");
+  const [stockMode, setStockMode] = useState("set");
+  const [sortAscending, setSortAscending] = useState(true);
+  const activeStockRequests = useRef(new Set());
 
   const pageSize = 6;
 
@@ -97,10 +103,24 @@ export default function AdminInventoryManagement({ onLogout }) {
     setLoading(true);
     setLoadError("");
 
-    const { data, error } = await supabase
-      .from("products")
-      .select("id, sku, name, description, price, product_type, stock_quantity")
-      .order("name", { ascending: true });
+    const pageSize = 1000;
+    const data = [];
+    let offset = 0;
+    let error = null;
+    while (true) {
+      const result = await supabase.from("products")
+        .select("id, sku, name, description, price, product_type, category_id, stock_quantity, categories(name)")
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (result.error) { error = result.error; break; }
+      data.push(...(result.data ?? []));
+      if ((result.data ?? []).length < pageSize) break;
+      offset += pageSize;
+      if (offset >= 100_000) {
+        error = new Error("Inventory is too large to load in one view. Narrow your search or contact support.");
+        break;
+      }
+    }
 
     if (error) {
       setLoadError(error.message);
@@ -112,9 +132,9 @@ export default function AdminInventoryManagement({ onLogout }) {
           sku: p.sku ?? "—",
           name: p.name ?? "Unnamed product",
           spec: p.description ?? "",
-          category: p.product_type ?? "Uncategorized",
+          category: p.categories?.name ?? p.product_type ?? "Uncategorized",
           price: Number(p.price ?? 0),
-          stock: p.stock_quantity ?? 0,
+          stock: Number(p.stock_quantity ?? 0),
         }))
       );
     }
@@ -128,15 +148,18 @@ export default function AdminInventoryManagement({ onLogout }) {
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return products;
-
-    return products.filter(
+    const matching = !term ? products : products.filter(
       (item) =>
         item.name.toLowerCase().includes(term) ||
         item.sku.toLowerCase().includes(term) ||
         item.category.toLowerCase().includes(term)
     );
-  }, [search, products]);
+    const inCategory = categoryFilter === "All" ? matching : matching.filter((item) => item.category === categoryFilter);
+    return [...inCategory].sort((a, b) => sortAscending
+      ? a.stock - b.stock || a.name.localeCompare(b.name)
+      : b.stock - a.stock || a.name.localeCompare(b.name));
+  }, [search, categoryFilter, products, sortAscending]);
+  const categoryOptions = useMemo(() => [...new Set(products.map((item) => item.category))].sort((a, b) => a.localeCompare(b)), [products]);
 
   const totalUnits = products.reduce((sum, item) => sum + item.stock, 0);
   const lowStock = products.filter(
@@ -155,37 +178,39 @@ export default function AdminInventoryManagement({ onLogout }) {
     currentPage * pageSize
   );
 
-  async function restockItem(item) {
-    const newStock = item.stock + RESTOCK_AMOUNT;
+  async function saveStock(item) {
+    if (activeStockRequests.current.has(item.id)) return;
+    const amount = Number(stockInput);
+    if (stockInput.trim() === "" || !Number.isSafeInteger(amount) || amount < 0 || (stockMode === "add" && amount === 0)) {
+      setNotice("Enter a valid whole number. Stock must remain nonnegative.");
+      return;
+    }
+    activeStockRequests.current.add(item.id);
     setRestockingId(item.id);
-
-    const { data, error } = await supabase
-      .from("products")
-      .update({ stock_quantity: newStock })
-      .eq("id", item.id)
-      .select("id");
-
-    setRestockingId(null);
-
-    if (error) {
-      setNotice(`Restock failed: ${error.message}`);
-      return;
+    try {
+      const { data, error } = await supabase.functions.invoke("manage-inventory", {
+        body: {
+          action: stockMode,
+          product_id: item.id,
+          quantity: amount,
+          expected_stock: item.stock,
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const savedStock = Number(data?.stock_quantity);
+      if (!Number.isSafeInteger(savedStock) || savedStock < 0) throw new Error("The saved stock quantity could not be confirmed.");
+      setProducts((rows) => rows.map((row) => row.id === item.id ? { ...row, stock: savedStock } : row));
+      setNotice(stockMode === "add" ? `${item.name}: added ${amount} units (now ${savedStock}).` : `${item.name}: stock set to ${savedStock}.`);
+      setStockEditor(null);
+    } catch (failure) {
+      const message = await edgeFunctionErrorMessage(failure, "Stock update failed.");
+      setNotice(`Stock update failed: ${message}`);
+      if (message.toLowerCase().includes("changed elsewhere")) await loadInventory();
+    } finally {
+      activeStockRequests.current.delete(item.id);
+      setRestockingId(null);
     }
-
-    // RLS can block an update without an error (0 rows changed).
-    if (!data || data.length === 0) {
-      setNotice(
-        "Restock was blocked. Your account may not have permission to update products (check RLS)."
-      );
-      return;
-    }
-
-    setProducts((rows) =>
-      rows.map((row) =>
-        row.id === item.id ? { ...row, stock: newStock } : row
-      )
-    );
-    setNotice(`${item.name}: added ${RESTOCK_AMOUNT} units (now ${newStock}).`);
   }
 
   function exportInventory() {
@@ -219,6 +244,7 @@ export default function AdminInventoryManagement({ onLogout }) {
 
   function resetFilters() {
     setSearch("");
+    setCategoryFilter("All");
     setPage(1);
   }
 
@@ -237,28 +263,28 @@ export default function AdminInventoryManagement({ onLogout }) {
         <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Units in Stock"
-            value={totalUnits.toLocaleString()}
+            value={loading ? "…" : loadError ? "—" : totalUnits.toLocaleString()}
             detail="Across all products"
             icon={Warehouse}
             color="bg-blue-50 text-blue-600"
           />
           <StatCard
             title="Low Stock"
-            value={`${lowStock} SKUs`}
+            value={loading ? "…" : loadError ? "—" : `${lowStock} SKUs`}
             detail={`${REORDER_POINT} units or fewer remaining`}
             icon={AlertTriangle}
             color="bg-rose-50 text-rose-600"
           />
           <StatCard
             title="Out of Stock SKUs"
-            value={`${outOfStock} SKUs`}
+            value={loading ? "…" : loadError ? "—" : `${outOfStock} SKUs`}
             detail="Requires immediate replenishment"
             icon={Package}
             color="bg-indigo-50 text-indigo-600"
           />
           <StatCard
             title="Total Inventory Value"
-            value={money(inventoryValue)}
+            value={loading ? "…" : loadError ? "—" : money(inventoryValue)}
             detail="Stock × selling price"
             icon={Banknote}
             color="bg-emerald-50 text-emerald-600"
@@ -355,6 +381,11 @@ export default function AdminInventoryManagement({ onLogout }) {
               />
             </div>
 
+            <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1); }} aria-label="Filter inventory by category" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700">
+              <option value="All">All categories</option>
+              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+
             <button
               onClick={resetFilters}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
@@ -378,7 +409,7 @@ export default function AdminInventoryManagement({ onLogout }) {
                     "Quick Action",
                   ].map((heading) => (
                     <th key={heading} className="px-3 py-3">
-                      {heading}
+                      {heading === "In Stock" ? <button type="button" className="inline-flex items-center gap-1" onClick={() => setSortAscending((value) => !value)} aria-label={`Sort stock ${sortAscending ? "descending" : "ascending"}`}>{heading} <span>{sortAscending ? "↑" : "↓"}</span></button> : heading}
                     </th>
                   ))}
                 </tr>
@@ -438,8 +469,14 @@ export default function AdminInventoryManagement({ onLogout }) {
                       </td>
 
                       <td className="px-3 py-3">
-                        <button
-                          onClick={() => restockItem(item)}
+                        {stockEditor === item.id ? <div className="flex min-w-44 flex-col gap-1.5">
+                          <span className="text-[10px] text-slate-600">Current: {item.stock}</span>
+                          <select aria-label="Stock operation" value={stockMode} onChange={(event) => setStockMode(event.target.value)} className="rounded border px-2 py-1 text-[10px]"><option value="set">Set exact quantity</option><option value="add">Add units</option></select>
+                          <input type="number" min={stockMode === "add" ? "1" : "0"} step="1" value={stockInput} onChange={(event) => setStockInput(event.target.value)} aria-label={stockMode === "add" ? "Units to add" : "New stock quantity"} className="w-full rounded border px-2 py-1 text-[10px]" />
+                          <span className="text-[10px] text-slate-600">Proposed: {stockInput === "" || !Number.isSafeInteger(Number(stockInput)) ? "—" : stockMode === "add" ? item.stock + Number(stockInput) : Number(stockInput)}</span>
+                          <div className="flex gap-1"><button type="button" onClick={() => saveStock(item)} disabled={restockingId === item.id} className="rounded bg-blue-600 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50">{restockingId === item.id ? "Saving…" : "Save"}</button><button type="button" onClick={() => setStockEditor(null)} className="rounded border px-2 py-1 text-[10px]">Cancel</button></div>
+                        </div> : <div className="flex gap-1"><button type="button" onClick={() => { setStockMode("set"); setStockInput(String(item.stock)); setStockEditor(item.id); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-semibold text-slate-700">Edit</button><button
+                          onClick={() => { setStockMode("add"); setStockInput(""); setStockEditor(item.id); }}
                           disabled={restockingId === item.id}
                           className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-60 ${
                             item.stock === 0
@@ -450,8 +487,8 @@ export default function AdminInventoryManagement({ onLogout }) {
                           <RotateCcw size={11} />
                           {restockingId === item.id
                             ? "Saving…"
-                            : `Restock +${RESTOCK_AMOUNT}`}
-                        </button>
+                            : "Restock"}
+                        </button></div>}
                       </td>
                     </tr>
                   ))}

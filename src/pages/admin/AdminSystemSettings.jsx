@@ -2,22 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   Users,
   ChevronRight,
-  Building2,
-  Clock,
-  CalendarDays,
-  CircleDollarSign,
-  Languages,
   Save,
-  RotateCcw,
   UserRound,
-  CheckCircle2,
   Plus,
   X,
   Pencil,
   UserPlus,
-  Search,
-  UserCheck,
-  UserX,
   Mail,
   Shield,
   ShieldCheck,
@@ -26,25 +16,9 @@ import {
   createStaff,
   resetStaffPassword,
   getAdminUsers,
+  updateStaffRole,
 } from '../../lib/adminStaffService';
 import AdminLayout from '../../layouts/AdminLayout';
-
-/* ---------- Default settings ---------- */
-
-const defaultSettings = {
-  companyName: 'TechHub Inc.',
-  timeZone: 'Asia/Manila',
-  currency: 'PHP',
-  dateFormat: 'MMM D, YYYY',
-  language: 'English',
-  twoFactor: true,
-  sessionTimeout: '30 minutes',
-  passwordPolicy: true,
-  emailNotifications: true,
-  orderNotifications: true,
-  inventoryNotifications: true,
-  securityNotifications: true,
-};
 
 const settingsTabs = [
   { label: 'User & Role Management', icon: Users },
@@ -123,59 +97,6 @@ function Field({ label, icon: Icon, children }) {
   );
 }
 
-function SelectField({
-  value,
-  onChange,
-  options,
-  label,
-  icon: Icon,
-}) {
-  return (
-    <Field label={label} icon={Icon}>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full min-w-0 appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-
-      <ChevronRight
-        size={13}
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-slate-400"
-      />
-    </Field>
-  );
-}
-
-function Toggle({ checked, onChange, label }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:ring-offset-2 ${
-        checked ? 'bg-blue-600' : 'bg-slate-300'
-      }`}
-    >
-      <span
-        className={`pointer-events-none absolute left-0.5 h-5 w-5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  );
-}
-
-
-
-
 /* ---------- User and role management ---------- */
 
 
@@ -184,38 +105,25 @@ function UserRoleSettings({
   usersLoading,
   usersError,
   onAddUser,
-  onEditUser,
-  onToggleUser,
+  onRefreshUsers,
 }) {
 
-  const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formError, setFormError] = useState('');
   const [userNotice, setUserNotice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resetUser, setResetUser] = useState(null);
-const [newPassword, setNewPassword] = useState('');
 const [resetError, setResetError] = useState('');
 const [isResetting, setIsResetting] = useState(false);
   const emptyForm = {
     name: '',
     email: '',
+    username: '',
     role: 'Staff',
-    password: '',
   };
 
   const [form, setForm] = useState({ ...emptyForm });
-
-  const filteredUsers = users.filter((user) => {
-    const query = search.trim().toLowerCase();
-
-    return (
-      user.name.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query) ||
-      user.role.toLowerCase().includes(query)
-    );
-  });
 
   const openAddForm = () => {
     setEditingId(null);
@@ -231,8 +139,8 @@ const [isResetting, setIsResetting] = useState(false);
     setForm({
       name: user.name,
       email: user.email,
+      username: user.username || '',
       role: user.role,
-      password: '',
     });
 
     setFormError('');
@@ -256,6 +164,28 @@ const handleSubmit = async (event) => {
 
   const name = form.name.trim();
   const email = form.email.trim().toLowerCase();
+  const username = form.username.trim().toLowerCase();
+
+  if (editingId) {
+    const userBeingEdited = users.find((user) => user.id === editingId);
+    if (userBeingEdited?.role !== form.role && !window.confirm(`Change ${userBeingEdited?.name || 'this account'} from ${userBeingEdited?.role || 'its current role'} to ${form.role}? This changes account access.`)) return;
+    try {
+      setIsSubmitting(true);
+      await updateStaffRole(editingId, form.role);
+      closeForm();
+      setUserNotice('Account role updated successfully.');
+      try {
+        onAddUser(await getAdminUsers());
+      } catch {
+        setUserNotice('Account role was updated, but the list could not refresh. Reload the page to see the latest accounts.');
+      }
+    } catch (error) {
+      setFormError(error.message || 'Unable to update this account role.');
+    } finally {
+      setIsSubmitting(false);
+    }
+    return;
+  }
 
   if (!name || !email || !form.role) {
     setFormError('Please complete all required fields.');
@@ -267,13 +197,6 @@ const handleSubmit = async (event) => {
     return;
   }
 
-  if (editingId) {
-    setFormError(
-      'Editing accounts is not connected to the database yet.'
-    );
-    return;
-  }
-
   if (form.role !== 'Staff') {
     setFormError(
       'Only Staff account creation is connected. Admin and User creation need separate secure handling.'
@@ -281,31 +204,29 @@ const handleSubmit = async (event) => {
     return;
   }
 
-  if (form.password.length < 12) {
-    setFormError(
-      'The temporary password must be at least 12 characters.'
-    );
+  if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+    setFormError('Username must be 3–24 characters using lowercase letters, numbers, or underscores.');
     return;
   }
 
   try {
     setIsSubmitting(true);
 
-    const username = email.split('@')[0].toLowerCase();
-
-    await createStaff({
+await createStaff({
   email,
   username,
   displayName: name,
-  password: form.password,
 });
 
-const updatedUsers = await getAdminUsers();
-onAddUser(updatedUsers);
 closeForm();
 setUserNotice(
   'Staff account created. Email confirmation may be required before sign-in.'
 );
+try {
+  onAddUser(await getAdminUsers());
+} catch {
+  setUserNotice('Staff invitation was sent, but the list could not refresh. Reload the page to see the account.');
+}
   } catch (error) {
     setFormError(
       error.message || 'Unable to create the Staff account.'
@@ -316,43 +237,35 @@ setUserNotice(
   
 };
 
-  const handlePasswordReset = async (event) => {
+const handlePasswordReset = async (event) => {
     event.preventDefault();
     setResetError('');
     setUserNotice('');
 
     if (!resetUser) return;
 
-    if (newPassword.length < 12) {
-      setResetError('The new password must be at least 12 characters.');
-      return;
-    }
-
     try {
       setIsResetting(true);
 
-      await resetStaffPassword(resetUser.id, newPassword);
+      await resetStaffPassword(resetUser.id);
 
       setUserNotice(
-        `Password reset successfully for ${resetUser.name}.`
+        `Account recovery email sent for ${resetUser.name}.`
       );
       setResetUser(null);
-      setNewPassword('');
     } catch (error) {
-      setResetError(
-        error.message || 'Unable to reset the staff password.'
-      );
+    setResetError(error.message || 'Unable to send the account recovery email.');
     } finally {
       setIsResetting(false);
     }
   };
 
 
-  const activeCount = users.filter(
-    (user) => user.status === 'Active'
-  ).length;
-
-  const inactiveCount = users.length - activeCount;
+  const activeCount = users.filter((user) => user.status === 'Active').length;
+  const inactiveCount = users.filter((user) => user.status === 'Inactive').length;
+  const invitedCount = users.filter((user) => user.status === 'Invited').length;
+  const unknownStatusCount = users.filter((user) => user.status === 'Unknown').length;
+  const accountListAvailable = !usersLoading && !usersError;
 
   return (
     <div className="space-y-4">
@@ -375,13 +288,13 @@ setUserNotice(
         </div>
 
         {/* User summary cards */}
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-lg border border-slate-100 p-3">
             <p className="text-xs font-medium text-slate-500">
               Total Users
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-800">
-              {users.length}
+              {accountListAvailable ? users.length : '—'}
             </p>
           </div>
 
@@ -390,7 +303,7 @@ setUserNotice(
               Active Accounts
             </p>
             <p className="mt-1 text-2xl font-bold text-emerald-600">
-              {activeCount}
+              {accountListAvailable ? activeCount : '—'}
             </p>
           </div>
 
@@ -399,10 +312,13 @@ setUserNotice(
               Inactive Accounts
             </p>
             <p className="mt-1 text-2xl font-bold text-slate-600">
-              {inactiveCount}
+              {accountListAvailable ? inactiveCount : '—'}
             </p>
           </div>
+          <div className="rounded-lg border border-slate-100 p-3"><p className="text-xs font-medium text-slate-500">Invited</p><p className="mt-1 text-2xl font-bold text-amber-600">{accountListAvailable ? invitedCount : '—'}</p></div>
+          <div className="rounded-lg border border-slate-100 p-3"><p className="text-xs font-medium text-slate-500">Status Unknown</p><p className="mt-1 text-2xl font-bold text-slate-500">{accountListAvailable ? unknownStatusCount : '—'}</p></div>
         </div>
+        <p className="mt-2 text-[10px] text-slate-500">Counts include Admin and Staff accounts. Invitations and unknown statuses are shown separately.</p>
 
         {/* Add and edit form */}
         {showForm && (
@@ -449,6 +365,7 @@ setUserNotice(
                   type="text"
                   required
                   maxLength={100}
+                  readOnly={Boolean(editingId)}
                   value={form.name}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -463,9 +380,10 @@ setUserNotice(
 
               <Field label="Email Address *" icon={Mail}>
                 <input
-                  type="email"
-                  required
+                  type={editingId ? 'text' : 'email'}
+                  required={!editingId}
                   maxLength={254}
+                  readOnly={Boolean(editingId)}
                   value={form.email}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -477,6 +395,10 @@ setUserNotice(
                   className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 />
               </Field>
+
+              {!editingId && <Field label="Username *" icon={UserRound}>
+                <input type="text" required minLength={3} maxLength={24} pattern="[a-z0-9_]{3,24}" value={form.username} onChange={(event) => setForm((current) => ({ ...current, username: event.target.value.toLowerCase() }))} placeholder="letters, numbers, underscores" className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+              </Field>}
 
               <Field label="Assigned Role *" icon={Shield}>
                 <select
@@ -490,7 +412,7 @@ setUserNotice(
                   }
                   className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 >
-                  {availableRoles.map((role) => (
+                  {availableRoles.filter((role) => editingId ? role === 'Admin' || role === 'Staff' : role === 'Staff').map((role) => (
                     <option key={role} value={role}>
                       {role}
                     </option>
@@ -503,25 +425,7 @@ setUserNotice(
                 />
               </Field>
 
-              {!editingId && (
-                <Field label="Temporary Password *" icon={ShieldCheck}>
-                  <input
-                    type="password"
-                    required
-                    minLength={12}
-                    autoComplete="new-password"
-                    value={form.password}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
-                    }
-                    placeholder="At least 12 characters"
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </Field>
-              )}
+              {!editingId && <p className="text-[11px] text-slate-500 sm:col-span-2">The staff member will receive an email invitation to set up their account.</p>}
             </div>
 
            
@@ -551,7 +455,7 @@ setUserNotice(
               >
                 <Save size={14} />
                 {isSubmitting
-                  ? 'Creating Staff...'
+                  ? 'Saving…'
                   : editingId
                   ? 'Save User'
                   : 'Add User'}
@@ -571,7 +475,7 @@ setUserNotice(
                   Reset Staff Password
                 </h3>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Set a new password for {resetUser.name}.
+                  Send a secure recovery link to {resetUser.email}.
                 </p>
               </div>
 
@@ -579,7 +483,6 @@ setUserNotice(
                 type="button"
                 onClick={() => {
                   setResetUser(null);
-                  setNewPassword('');
                   setResetError('');
                 }}
                 aria-label="Close password reset form"
@@ -589,18 +492,7 @@ setUserNotice(
               </button>
             </div>
 
-            <Field label="New Password *" icon={ShieldCheck}>
-              <input
-                type="password"
-                required
-                minLength={12}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                placeholder="At least 12 characters"
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-              />
-            </Field>
+            <p className="text-xs text-slate-600">A secure recovery link will be sent to the staff member’s email address.</p>
 
             {resetError && (
               <p role="alert" className="mt-3 text-xs font-medium text-rose-600">
@@ -613,7 +505,6 @@ setUserNotice(
                 type="button"
                 onClick={() => {
                   setResetUser(null);
-                  setNewPassword('');
                   setResetError('');
                 }}
                 className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 hover:bg-slate-50"
@@ -626,7 +517,7 @@ setUserNotice(
                 disabled={isResetting}
                 className="inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
               >
-                {isResetting ? 'Resetting...' : 'Reset Password'}
+                {isResetting ? 'Sending…' : 'Send Recovery Email'}
               </button>
             </div>
           </form>
@@ -638,29 +529,19 @@ setUserNotice(
           </p>
         )}
 
-        {/* Search */}
-        <div className="mt-5 flex h-9 items-center gap-2 rounded-lg bg-blue-50 px-3">
-          <Search size={14} className="shrink-0 text-slate-500" />
-
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by name, email, or role..."
-            aria-label="Search users"
-            className="w-full bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
-          />
-        </div>
         {usersLoading && (
   <p role="status" className="mt-4 text-xs text-slate-500">
-    Loading users from Supabase...
+    Loading user accounts…
   </p>
 )}
 
 {usersError && (
-  <p role="alert" className="mt-4 text-xs text-rose-600">
-    Could not load users: {usersError}
-  </p>
+  <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-rose-600">
+    <p>Could not load users: {usersError}</p>
+    <button type="button" onClick={onRefreshUsers} className="rounded-md border border-rose-200 bg-white px-3 py-1.5 font-semibold text-rose-700 hover:bg-rose-50">
+      Retry
+    </button>
+  </div>
 )}
         {/* User table */}
         <div className="mt-4 overflow-x-auto">
@@ -675,7 +556,7 @@ setUserNotice(
             </thead>
 
             <tbody>
-              {filteredUsers.map((user) => (
+              {users.map((user) => (
                 <tr
                   key={user.id}
                   className="border-b border-slate-50 last:border-0"
@@ -694,6 +575,7 @@ setUserNotice(
                         <p className="mt-1 text-[10px] text-slate-500">
                           {user.email}
                         </p>
+                        <p className="mt-1 text-[10px] text-slate-500">Username: {user.username || 'Not available'}</p>
                       </div>
                     </div>
                   </td>
@@ -715,16 +597,12 @@ setUserNotice(
                   <td className="px-3 py-3">
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${
-                        user.status === 'Active'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-slate-100 text-slate-500'
+                        user.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : user.status === 'Invited' ? 'bg-amber-50 text-amber-700' : user.status === 'Inactive' ? 'bg-slate-100 text-slate-600' : 'bg-violet-50 text-violet-700'
                       }`}
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          user.status === 'Active'
-                            ? 'bg-emerald-500'
-                            : 'bg-slate-400'
+                          user.status === 'Active' ? 'bg-emerald-500' : user.status === 'Invited' ? 'bg-amber-500' : 'bg-slate-400'
                         }`}
                       />
 
@@ -734,7 +612,7 @@ setUserNotice(
 
                   <td className="py-3 pl-3">
                     <div className="flex justify-end gap-1.5">
-                      <button
+                      {!user.isCurrentUser && <button
                         type="button"
                         onClick={() => openEditForm(user)}
                         aria-label={`Edit ${user.name}`}
@@ -742,14 +620,13 @@ setUserNotice(
                         className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
                       >
                         <Pencil size={13} />
-                      </button>
+                      </button>}
                         
 {user.role === 'Staff' && (
   <button
     type="button"
     onClick={() => {
       setResetUser(user);
-      setNewPassword('');
       setResetError('');
       setUserNotice('');
     }}
@@ -761,52 +638,23 @@ setUserNotice(
   </button>
 )}
 
-                      <button
-                        type="button"
-                        onClick={() => onToggleUser(user.id)}
-                        aria-label={
-                          user.status === 'Active'
-                            ? `Deactivate ${user.name}`
-                            : `Activate ${user.name}`
-                        }
-                        title={
-                          user.status === 'Active'
-                            ? 'Deactivate user'
-                            : 'Activate user'
-                        }
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
-                          user.status === 'Active'
-                            ? 'border-rose-100 text-rose-500 hover:bg-rose-50'
-                            : 'border-emerald-100 text-emerald-600 hover:bg-emerald-50'
-                        }`}
-                      >
-                        {user.status === 'Active' ? (
-                          <UserX size={14} />
-                        ) : (
-                          <UserCheck size={14} />
-                        )}
-                      </button>
                     </div>
                   </td>
                 </tr>
               ))}
 
-              {!usersLoading && !usersError && filteredUsers.length === 0 && (
+              {!usersLoading && !usersError && users.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-10 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <Users size={24} className="text-slate-300" />
 
                       <p className="text-xs font-semibold text-slate-600">
-                        {users.length === 0
-                          ? 'No users added yet'
-                          : 'No matching users'}
+                        No Admin or Staff accounts found
                       </p>
 
                       <p className="text-[11px] text-slate-500">
-                        {users.length === 0
-                          ? 'Select Add New User to create a record.'
-                          : 'Try a different search term.'}
+                        Add a Staff account or assign a Staff role to an existing account.
                       </p>
                     </div>
                   </td>
@@ -817,7 +665,7 @@ setUserNotice(
         </div>
 
         <div className="mt-3 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
-          Showing {filteredUsers.length} of {users.length} user record
+          Showing {users.length} user record
           {users.length === 1 ? '' : 's'}
         </div>
       </section>
@@ -879,20 +727,11 @@ setUserNotice(
 
 export default function AdminSystemSettings({onLogout}) {
   const [activeTab, setActiveTab] = useState('User & Role Management');
-  const [settings, setSettings] = useState({ ...defaultSettings });
   const [users, setUsers] = useState([]);
 const [usersLoading, setUsersLoading] = useState(true);
 const [usersError, setUsersError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [usersReloadKey, setUsersReloadKey] = useState(0);
 
-  const updateSetting = (key, value) => {
-    setSettings((current) => ({
-      ...current,
-      [key]: value,
-    }));
-
-    setNotice('');
-  };
   useEffect(() => {
   let isMounted = true;
 
@@ -924,56 +763,12 @@ const [usersError, setUsersError] = useState('');
   return () => {
     isMounted = false;
   };
-}, []);
+}, [usersReloadKey]);
  
 const addUser = (updatedUsers) => {
   setUsers(updatedUsers);
 };
 
-
-  const editUser = (id, updatedDetails) => {
-    if (!availableRoles.includes(updatedDetails.role)) {
-      setNotice('Please select a valid role.');
-      return;
-    }
-
-    setUsers((current) =>
-      current.map((user) =>
-        user.id === id
-          ? { ...user, ...updatedDetails }
-          : user
-      )
-    );
-
-    setNotice('User details updated.');
-  };
-
-  const toggleUserStatus = (id) => {
-    setUsers((current) =>
-      current.map((user) =>
-        user.id === id
-          ? {
-              ...user,
-              status:
-                user.status === 'Active' ? 'Inactive' : 'Active',
-            }
-          : user
-      )
-    );
-
-    setNotice('');
-  };
-
-  const resetSettings = () => {
-    setSettings({ ...defaultSettings });
-    setNotice('Settings have been reset to their default values.');
-  };
-
-  const saveSettings = () => {
-    setNotice(
-      'Settings are updated in this session. Connect a backend to save permanently.'
-    );
-  };
 
   return (
     <AdminLayout onLogout={onLogout}>
@@ -1000,7 +795,6 @@ const addUser = (updatedUsers) => {
                 type="button"
                 onClick={() => {
                   setActiveTab(label);
-                  setNotice('');
                 }}
                 aria-pressed={active}
                 className={`flex min-h-17 min-w-0 items-center gap-2 rounded-xl border p-3 text-left transition-colors sm:gap-3 sm:p-4 ${
@@ -1041,44 +835,12 @@ const addUser = (updatedUsers) => {
   usersLoading={usersLoading}
   usersError={usersError}
   onAddUser={addUser}
-  onEditUser={editUser}
-  onToggleUser={toggleUserStatus}
+  onRefreshUsers={() => setUsersReloadKey((current) => current + 1)}
 />
 
           )}
 
        </div>
-
-        {/* Save and reset actions */}
-        <section className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-          <button
-            type="button"
-            onClick={saveSettings}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            <Save size={14} />
-            Save Changes
-          </button>
-
-          <button
-            type="button"
-            onClick={resetSettings}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            <RotateCcw size={14} />
-            Reset
-          </button>
-
-          {notice && (
-            <p
-              role="status"
-              className="flex w-full items-center gap-1.5 text-xs text-emerald-700 sm:ml-auto sm:w-auto"
-            >
-              <CheckCircle2 size={14} />
-              {notice}
-            </p>
-          )}
-        </section>
 
         {/* Page footer */}
         <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white px-4 py-3 text-[10px] text-slate-500 shadow-sm">

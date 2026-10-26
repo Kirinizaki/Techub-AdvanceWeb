@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { fetchAllRows } from "../../lib/fetchAllRows";
 import {
   Search,
   SlidersHorizontal,
@@ -36,22 +37,24 @@ const marginOptions = [
 ];
 
 const getMargin = (cost, selling) => {
-  const c = Number(cost) || 0;
+  if (cost === null || cost === undefined || cost === "") return null;
+  const c = Number(cost);
   const s = Number(selling) || 0;
-  return s > 0 ? Number((((s - c) / s) * 100).toFixed(1)) : 0;
+  return Number.isFinite(c) && s > 0 ? Number((((s - c) / s) * 100).toFixed(1)) : null;
 };
 
 // Map the database product/category records to the fields used by this page.
 const mapProduct = (row) => {
   const price = Number(row.price) || 0;
-  const cost = Number(row.cost_price ?? row.cost ?? 0);
+  const rawCost = row.cost_price ?? row.cost;
+  const cost = rawCost === null || rawCost === undefined || rawCost === "" ? null : Number(rawCost);
   return {
     id: row.id,
     sku: row.sku || "",
     name: row.name || "Unnamed product",
     cost,
     selling: price,
-    standard: Number(row.standard_price ?? row.msrp ?? price),
+    standard: row.standard_price ?? row.msrp ?? null,
     margin: getMargin(cost, price),
     rules: "None",
     category: row.categories?.name || "Uncategorized",
@@ -81,15 +84,16 @@ export default function AdminPriceManagement({ onLogout }) {
   const loadProducts = async () => {
     setLoading(true);
     setMessage("");
-    // Use the columns confirmed in the Supabase products table. Cost/MSRP
+    // Only update the product price fields used by this screen. Cost and MSRP
     // are optional app fields, so they are read only if those columns exist.
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllRows(() => supabase
       .from("products")
       .select("id, sku, name, slug, description, price, image_url, category_id, brand_id, stock_quantity, is_active, created_at, updated_at, product_type, categories(name)")
-      .order("name", { ascending: true });
+      .order("name", { ascending: true }).order("id", { ascending: true }));
 
     if (error) {
-      setMessage(`Could not load products: ${error.message}`);
+      console.error("Pricing data load failed:", error);
+      setMessage("Could not load prices.");
       setProducts([]);
     } else {
       setProducts((data || []).map(mapProduct));
@@ -134,11 +138,11 @@ export default function AdminPriceManagement({ onLogout }) {
       const matchesCategory =
         category === "All Categories" || product.category === category;
       let matchesMargin = true;
-      if (marginFilter === "Below 20%") matchesMargin = product.margin < 20;
+      if (marginFilter === "Below 20%") matchesMargin = product.margin !== null && product.margin < 20;
       else if (marginFilter === "20% - 30%") {
-        matchesMargin = product.margin >= 20 && product.margin <= 30;
+        matchesMargin = product.margin !== null && product.margin >= 20 && product.margin <= 30;
       } else if (marginFilter === "Above 30%") {
-        matchesMargin = product.margin > 30;
+        matchesMargin = product.margin !== null && product.margin > 30;
       }
       return matchesSearch && matchesCategory && matchesMargin;
     });
@@ -150,41 +154,47 @@ export default function AdminPriceManagement({ onLogout }) {
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
-  const averageMargin = products.length
-    ? products.reduce((sum, product) => sum + product.margin, 0) / products.length
-    : 0;
+  const margins = products.map((product) => product.margin).filter((margin) => margin !== null);
+  const averageMargin = margins.length
+    ? margins.reduce((sum, margin) => sum + margin, 0) / margins.length
+    : null;
+  const pricingStatus = loading
+    ? { value: "Loading…", note: "Loading product prices" }
+    : message.startsWith("Could not load")
+      ? { value: "Unable to load prices", note: "Refresh to try again" }
+      : message.startsWith("Could not update") || message.startsWith("Price was not saved") || message.startsWith("Bulk update stopped")
+        ? { value: "Unable to save prices", note: "Review the error and retry" }
+        : message.includes("successfully")
+          ? { value: "Prices saved", note: "The changes were confirmed" }
+          : averageMargin === null && products.length > 0
+            ? { value: "Pricing data incomplete", note: "Cost information is not available" }
+            : { value: "Prices loaded", note: "Product price data is ready" };
 
   const updateProduct = async (event) => {
     event.preventDefault();
     if (!editingProduct) return;
 
     const selling = Number(editingProduct.selling);
-    const standard = Number(editingProduct.standard);
-    const cost = Number(editingProduct.cost);
-
     if (!Number.isFinite(selling) || selling <= 0) {
       setMessage("Enter a valid selling price greater than zero.");
       return;
     }
-    if (!Number.isFinite(standard) || standard <= 0) {
-      setMessage("Enter a valid standard/MSRP price greater than zero.");
-      return;
-    }
-    if (!Number.isFinite(cost) || cost < 0) {
-      setMessage("Cost must be zero or greater.");
-      return;
-    }
-
     // The provided schema confirms `price`, but does not show cost_price or
     // standard_price columns. Update only the confirmed database field.
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .update({ price: selling, updated_at: new Date().toISOString() })
-      .eq("id", editingProduct.id);
+      .eq("id", editingProduct.id).select("id");
 
     if (error) {
-      setMessage(`Could not update price: ${error.message}`);
+      console.error("Price update failed:", error);
+      setMessage("Could not update price. Review the product and try again.");
+      setSaving(false);
+      return;
+    }
+    if (!data?.length) {
+      setMessage("Price was not saved. Refresh the product and try again.");
       setSaving(false);
       return;
     }
@@ -197,16 +207,14 @@ export default function AdminPriceManagement({ onLogout }) {
               selling,
               // Cost and standard are display values unless matching columns
               // are added to the database schema.
-              cost,
-              standard,
-              margin: getMargin(cost, selling),
+              margin: getMargin(product.cost, selling),
             }
           : product
       )
     );
     setEditingProduct(null);
     setSaving(false);
-    setMessage("Selling price saved to Supabase. Cost/MSRP are not saved because the shown schema has no matching columns.");
+    setMessage("Price updated successfully.");
   };
 
   const applyBulkAdjustment = async () => {
@@ -229,12 +237,13 @@ export default function AdminPriceManagement({ onLogout }) {
 
     setSaving(true);
     for (const item of updates) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("products")
         .update({ price: item.price, updated_at: new Date().toISOString() })
-        .eq("id", item.id);
-      if (error) {
-        setMessage(`Bulk update stopped: ${error.message}. Some earlier products may already have been updated.`);
+        .eq("id", item.id).select("id");
+      if (error || !data?.length) {
+        if (error) console.error("Bulk price update failed:", error);
+        setMessage("Bulk update stopped. Earlier prices may already have been saved; refresh and review them.");
         setSaving(false);
         await loadProducts();
         return;
@@ -255,7 +264,7 @@ export default function AdminPriceManagement({ onLogout }) {
     setSelected([]);
     setBulkMode(false);
     setSaving(false);
-    setMessage(`Updated ${updates.length} product price(s) in Supabase.`);
+    setMessage(`Updated ${updates.length} product price(s) successfully.`);
   };
 
   const toggleSelected = (id) => {
@@ -307,9 +316,7 @@ export default function AdminPriceManagement({ onLogout }) {
               <h1 className="text-2xl font-bold tracking-tight">Price Management</h1>
               <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600">Live &amp; Managed</span>
             </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Update selling prices stored in Supabase. Cost basis, MSRP, promotions, and approvals require their own database fields/workflows.
-            </p>
+            <p className="mt-1 text-xs text-slate-500">Review and update product selling prices.</p>
           </div>
           <button type="button" onClick={() => setBulkMode(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50" disabled={saving}>
             <SlidersHorizontal size={14} /> Bulk Price Adjustment
@@ -324,10 +331,10 @@ export default function AdminPriceManagement({ onLogout }) {
         )}
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard title="Average Gross Margin" value={`${averageMargin.toFixed(1)}%`} note="Calculated from available cost and selling price data" icon={Percent} iconStyle="bg-emerald-50 text-emerald-600" />
-          <SummaryCard title="Products Loaded" value={String(products.length)} note="Products read from Supabase" icon={Package} iconStyle="bg-indigo-50 text-indigo-600" />
+          <SummaryCard title="Average Gross Margin" value={averageMargin === null ? "Unavailable" : `${averageMargin.toFixed(1)}%`} note={averageMargin === null ? "Cost information is not available" : `${margins.length} products with cost data`} icon={Percent} iconStyle="bg-emerald-50 text-emerald-600" />
+          <SummaryCard title="Products Loaded" value={loading ? "…" : message.startsWith("Could not load") ? "—" : String(products.length)} note="Products with available pricing" icon={Package} iconStyle="bg-indigo-50 text-indigo-600" />
           <SummaryCard title="Selected Products" value={String(selected.length)} note="For bulk price changes" icon={Tag} iconStyle="bg-blue-50 text-blue-600" />
-          <SummaryCard title="Pricing Status" value={loading ? "Loading…" : "Connected"} note={loading ? "Reading products" : "Supabase query completed"} icon={AlertTriangle} iconStyle="bg-rose-50 text-rose-600" />
+          <SummaryCard title="Pricing Status" value={pricingStatus.value} note={pricingStatus.note} icon={AlertTriangle} iconStyle="bg-blue-50 text-blue-600" />
         </section>
 
         <section className="overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm">
@@ -373,14 +380,14 @@ export default function AdminPriceManagement({ onLogout }) {
                   <th className="px-2 py-3">SKU &amp; Product Details</th><th className="px-3 py-3">Cost Basis</th><th className="px-3 py-3">Selling Price</th><th className="px-3 py-3">Standard MSRP</th><th className="px-3 py-3">Gross Margin</th><th className="px-3 py-3">Active Rules</th><th className="px-4 py-3 text-right">Action</th>
                 </tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {loading ? <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-slate-500">Loading products from Supabase…</td></tr> : visibleProducts.map((product) => (
+                  {loading ? <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-slate-500">Loading product prices…</td></tr> : visibleProducts.map((product) => (
                     <tr key={product.id} className="transition hover:bg-blue-50/30">
                       <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(product.id)} onChange={() => toggleSelected(product.id)} aria-label={`Select ${product.name}`} className="accent-blue-600" /></td>
                       <td className="px-2 py-3"><div className="flex min-w-[230px] items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600"><Package size={15} /></span><div><p className="text-xs font-semibold text-slate-800">{product.name}</p><p className="mt-0.5 text-[10px] text-slate-400">SKU - {product.sku || "Not set"}</p><p className="text-[10px] text-slate-400">{product.category}</p></div></div></td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{money(product.cost)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{product.cost === null ? "Unavailable" : money(product.cost)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-800">{money(product.selling)}</td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{money(product.standard)}</td>
-                      <td className="px-3 py-3"><span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${product.margin < 20 ? "bg-rose-50 text-rose-600" : product.margin > 30 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{product.margin.toFixed(1)}%</span></td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{product.standard == null ? "Unavailable" : money(product.standard)}</td>
+                      <td className="px-3 py-3">{product.margin === null ? <span className="text-[10px] text-slate-500">Unavailable</span> : <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${product.margin < 20 ? "bg-rose-50 text-rose-600" : product.margin > 30 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>{product.margin.toFixed(1)}%</span>}</td>
                       <td className="px-3 py-3"><span className="inline-block rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500">{product.rules}</span></td>
                       <td className="px-4 py-3 text-right"><button type="button" onClick={() => { setEditingProduct({ ...product }); setMessage(""); }} className="rounded-md bg-blue-600 px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-blue-700">Update</button></td>
                     </tr>
@@ -394,7 +401,7 @@ export default function AdminPriceManagement({ onLogout }) {
               {loading ? <p className="col-span-full py-10 text-center text-xs text-slate-500">Loading products…</p> : visibleProducts.map((product) => (
                 <div key={product.id} className="rounded-xl border border-slate-100 p-4 transition hover:border-blue-200 hover:shadow-sm">
                   <div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Package size={15} /></span><div><p className="text-xs font-semibold">{product.name}</p><p className="text-[10px] text-slate-400">{product.sku || "No SKU"}</p></div></div><input type="checkbox" checked={selected.includes(product.id)} onChange={() => toggleSelected(product.id)} aria-label={`Select ${product.name}`} className="accent-blue-600" /></div>
-                  <div className="mt-4 grid grid-cols-2 gap-3"><div><p className="text-[10px] text-slate-400">Cost Basis</p><p className="mt-1 text-xs">{money(product.cost)}</p></div><div><p className="text-[10px] text-slate-400">Selling Price</p><p className="mt-1 text-xs font-semibold">{money(product.selling)}</p></div><div><p className="text-[10px] text-slate-400">Standard MSRP</p><p className="mt-1 text-xs">{money(product.standard)}</p></div><div><p className="text-[10px] text-slate-400">Gross Margin</p><p className="mt-1 text-xs font-semibold text-blue-600">{product.margin.toFixed(1)}%</p></div></div>
+                  <div className="mt-4 grid grid-cols-2 gap-3"><div><p className="text-[10px] text-slate-400">Cost Basis</p><p className="mt-1 text-xs">{product.cost === null ? "Unavailable" : money(product.cost)}</p></div><div><p className="text-[10px] text-slate-400">Selling Price</p><p className="mt-1 text-xs font-semibold">{money(product.selling)}</p></div><div><p className="text-[10px] text-slate-400">Standard MSRP</p><p className="mt-1 text-xs">{product.standard == null ? "Unavailable" : money(product.standard)}</p></div><div><p className="text-[10px] text-slate-400">Gross Margin</p><p className="mt-1 text-xs font-semibold text-blue-600">{product.margin === null ? "Unavailable" : `${product.margin.toFixed(1)}%`}</p></div></div>
                   <button type="button" onClick={() => { setEditingProduct({ ...product }); setMessage(""); }} className="mt-4 w-full rounded-lg bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-700">Update Pricing</button>
                 </div>
               ))}
@@ -424,10 +431,8 @@ export default function AdminPriceManagement({ onLogout }) {
         <div role="dialog" aria-modal="true" aria-labelledby="edit-pricing-title" className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
           <div className="flex items-start justify-between gap-3"><div><h2 id="edit-pricing-title" className="text-sm font-bold">Update Product Pricing</h2><p className="mt-1 text-[11px] text-slate-500">{editingProduct.name}</p></div><button type="button" onClick={() => setEditingProduct(null)} aria-label="Close modal" className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X size={16} /></button></div>
           <form onSubmit={updateProduct} className="mt-5 space-y-4">
-            <PriceInput label="Cost Basis (₱) (display only)" value={editingProduct.cost} onChange={(value) => setEditingProduct((previous) => ({ ...previous, cost: value }))} />
-            <PriceInput label="Selling Price (₱) (saved to Supabase)" value={editingProduct.selling} onChange={(value) => setEditingProduct((previous) => ({ ...previous, selling: value }))} />
-            <PriceInput label="Standard MSRP (₱) (display only)" value={editingProduct.standard} onChange={(value) => setEditingProduct((previous) => ({ ...previous, standard: value }))} />
-            <p className="text-[10px] text-amber-700">Your shown products table has a `price` column but no cost or MSRP column. Only selling price is saved to the database.</p>
+            <PriceInput label="Selling Price (₱)" value={editingProduct.selling} onChange={(value) => setEditingProduct((previous) => ({ ...previous, selling: value }))} />
+            <p className="text-[10px] text-amber-700">Cost and MSRP values are unavailable, so gross margin cannot be calculated.</p>
             <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setEditingProduct(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">Cancel</button><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"><Check size={13} />{saving ? "Saving…" : "Save Changes"}</button></div>
           </form>
         </div>

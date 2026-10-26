@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Download, Plus, Search, Package, Layers, CircleCheck, ChevronLeft,
   ChevronRight, Pencil, Copy, Eye, LayoutGrid, List, Cpu, Monitor,
@@ -6,6 +6,14 @@ import {
 } from 'lucide-react';
 import AdminLayout from '../../layouts/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
+import { fetchAllRows } from '../../lib/fetchAllRows';
+import {
+  loadProductSpecifications,
+  saveProductSpecifications,
+  specificationFieldLabel,
+  specificationFieldType,
+  specificationTableForCategory,
+} from '../../services/productSpecificationService';
 
 const formatPrice = (price) =>
   `₱${Number(price || 0).toLocaleString('en-PH', {
@@ -62,22 +70,29 @@ export default function AdminProductCatalog({ onLogout }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [specSchema, setSpecSchema] = useState(null);
+  const [existingSpecSchema, setExistingSpecSchema] = useState(null);
+  const [specValues, setSpecValues] = useState({});
+  const [specLoading, setSpecLoading] = useState(false);
+  const [specError, setSpecError] = useState('');
+  const specLoadRevision = useRef(0);
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
     setError('');
     const [productResult, categoryResult, brandResult] = await Promise.all([
-      supabase
+      fetchAllRows(() => supabase
         .from('products')
         .select('id, sku, name, slug, description, price, image_url, category_id, brand_id, stock_quantity, is_active, created_at, updated_at, product_type')
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false }).order('id', { ascending: true })),
       supabase.from('categories').select('id, name, slug').order('name'),
       supabase.from('brands').select('id, name, slug').order('name'),
     ]);
 
     const failed = productResult.error || categoryResult.error || brandResult.error;
     if (failed) {
-      setError(failed.message || 'Could not load catalog data.');
+      console.error('Catalog data load failed:', failed);
+      setError('Could not load products, categories, or brands. Try again.');
       setLoading(false);
       return;
     }
@@ -142,15 +157,60 @@ export default function AdminProductCatalog({ onLogout }) {
   };
 
   const clearForm = () => {
+    specLoadRevision.current += 1;
     setNewProduct(blankProduct);
     setEditingProduct(null);
     setShowAddForm(false);
+    setSpecSchema(null);
+    setExistingSpecSchema(null);
+    setSpecValues({});
+    setSpecLoading(false);
+    setSpecError('');
+  };
+
+  const selectProductCategory = async (categoryId, productType = newProduct.product_type, productId = editingProduct?.id) => {
+    const revision = ++specLoadRevision.current;
+    const categoryRow = categories.find((item) => item.id === categoryId);
+    const selectedSchema = specificationTableForCategory(categoryRow?.name, productType);
+    setSpecSchema(selectedSchema);
+    setSpecValues(selectedSchema ? Object.fromEntries(selectedSchema.keys.map((key) => [key, ''])) : {});
+    setExistingSpecSchema(null);
+    setSpecError('');
+    if (!productId) {
+      setSpecLoading(false);
+      return;
+    }
+
+    setSpecLoading(true);
+    try {
+      const record = await loadProductSpecifications(productId);
+      if (revision !== specLoadRevision.current) return;
+      const activeSchema = selectedSchema || record.schema;
+      setSpecSchema(activeSchema);
+      setExistingSpecSchema(record.existingSchema);
+      setSpecValues(activeSchema?.table === record.schema?.table
+        ? record.values
+        : Object.fromEntries((activeSchema?.keys ?? []).map((key) => [key, ''])));
+    } catch (loadError) {
+      if (revision === specLoadRevision.current) setSpecError(loadError.message || 'Could not load product specifications.');
+    } finally {
+      if (revision === specLoadRevision.current) setSpecLoading(false);
+    }
   };
 
   const handleSaveProduct = async (event) => {
     event.preventDefault();
     setError('');
     setNotice('');
+
+    if (specLoading) {
+      setError('Wait for the selected product specifications to finish loading.');
+      return;
+    }
+    if (specError) {
+      setError(`Specifications could not be loaded: ${specError}`);
+      return;
+    }
 
     if (!newProduct.name.trim() || !newProduct.category_id || newProduct.price === '') {
       setError('Product name, category, and price are required.');
@@ -185,27 +245,41 @@ export default function AdminProductCatalog({ onLogout }) {
     };
 
     setSaving(true);
-    let result;
-    if (editingProduct) {
-      result = await supabase.from('products').update(payload).eq('id', editingProduct.id);
-    } else {
-      result = await supabase.from('products').insert(payload);
-    }
+    let productId = editingProduct?.id;
+    try {
+      if (editingProduct) {
+        const result = await supabase.from('products').update(payload).eq('id', editingProduct.id).select('id');
+        if (result.error) throw result.error;
+        if (!result.data?.length) throw new Error('Product was not updated. Check your account permissions.');
+      } else {
+        const result = await supabase.from('products').insert(payload).select('id').single();
+        if (result.error) throw result.error;
+        productId = result.data.id;
+      }
 
-    if (result.error) {
-      setError(result.error.message);
+      if (specSchema && !specError) {
+        await saveProductSpecifications(productId, specSchema, specValues, existingSpecSchema);
+      } else if (specError) {
+        throw new Error(`Product saved, but its specifications were not saved: ${specError}`);
+      }
+
+      await loadCatalog();
+      clearForm();
+      resetFilters();
+      setNotice(editingProduct ? 'Product and specifications updated successfully.' : 'Product and specifications added successfully.');
+    } catch (saveError) {
+      setError(saveError.message || 'Could not save product changes.');
+      if (productId && !editingProduct) {
+        await loadCatalog();
+        clearForm();
+        setNotice('Product record was saved; review the error above before retrying its specifications.');
+      }
+    } finally {
       setSaving(false);
-      return;
     }
-
-    await loadCatalog();
-    clearForm();
-    resetFilters();
-    setNotice(editingProduct ? 'Product updated in Supabase.' : 'Product added to Supabase.');
-    setSaving(false);
   };
 
-  const startEdit = (product) => {
+  const startEdit = async (product) => {
     setError('');
     setNotice('');
     setEditingProduct(product);
@@ -220,6 +294,7 @@ export default function AdminProductCatalog({ onLogout }) {
       image_url: product.image_url || '',
       product_type: product.product_type || '',
     });
+    await selectProductCategory(product.category_id || '', product.product_type || '', product.id);
     setShowAddForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -242,14 +317,22 @@ export default function AdminProductCatalog({ onLogout }) {
       product_type: product.product_type || null,
       updated_at: new Date().toISOString(),
     };
-    const { error: insertError } = await supabase.from('products').insert(payload);
+    const { data: copy, error: insertError } = await supabase.from('products').insert(payload).select('id').single();
     if (insertError) {
       setError(insertError.message);
       return;
     }
+    let specificationsCopied = true;
+    try {
+      const specification = await loadProductSpecifications(product.id);
+      if (specification.schema) await saveProductSpecifications(copy.id, specification.schema, specification.values, null);
+    } catch (specificationError) {
+      specificationsCopied = false;
+      setError(`Product copy was created, but its specifications could not be copied: ${specificationError.message}`);
+    }
     await loadCatalog();
     resetFilters();
-    setNotice('Product duplicated in Supabase.');
+    if (specificationsCopied) setNotice('Product duplicated successfully.');
   };
 
   const handleExport = () => {
@@ -287,7 +370,7 @@ export default function AdminProductCatalog({ onLogout }) {
             <button type="button" onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">
               <Download size={13} /> Export Catalog
             </button>
-            <button type="button" onClick={() => { setEditingProduct(null); setNewProduct(blankProduct); setShowAddForm((value) => !value); }} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+            <button type="button" onClick={() => { if (showAddForm) { clearForm(); return; } setEditingProduct(null); setNewProduct(blankProduct); setSpecSchema(null); setExistingSpecSchema(null); setSpecValues({}); setSpecLoading(false); setSpecError(''); setShowAddForm(true); }} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">
               <Plus size={14} /> Add New Product
             </button>
           </div>
@@ -313,7 +396,7 @@ export default function AdminProductCatalog({ onLogout }) {
                 <input value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })} placeholder="Enter SKU" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
               </label>
               <label className="text-xs font-medium text-slate-600">Category
-                <select required value={newProduct.category_id} onChange={(e) => setNewProduct({ ...newProduct, category_id: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500">
+                <select required value={newProduct.category_id} onChange={(e) => { const category_id = e.target.value; setNewProduct((current) => ({ ...current, category_id })); void selectProductCategory(category_id); }} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500">
                   <option value="">Choose category</option>
                   {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
@@ -334,13 +417,28 @@ export default function AdminProductCatalog({ onLogout }) {
                 <input type="url" value={newProduct.image_url} onChange={(e) => setNewProduct({ ...newProduct, image_url: e.target.value })} placeholder="https://..." className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
               </label>
               <label className="text-xs font-medium text-slate-600">Product Type (optional)
-                <input value={newProduct.product_type} onChange={(e) => setNewProduct({ ...newProduct, product_type: e.target.value })} placeholder="e.g. component" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
+                <input value={newProduct.product_type} onChange={(e) => { const product_type = e.target.value; setNewProduct((current) => ({ ...current, product_type })); void selectProductCategory(newProduct.category_id, product_type); }} placeholder="e.g. component" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
               </label>
               <label className="text-xs font-medium text-slate-600 sm:col-span-2 xl:col-span-3">Description (optional)
                 <textarea rows={2} value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} placeholder="Product description" className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-blue-500" />
               </label>
             </div>
-            <button disabled={saving} type="submit" className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+            {specLoading && <p role="status" className="mt-4 text-xs text-slate-500">Loading product specifications…</p>}
+            {specError && <p role="alert" className="mt-4 text-xs text-rose-600">Could not load specifications: {specError}</p>}
+            {specSchema ? <section className="mt-4 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+              <h3 className="text-xs font-bold text-slate-800">{specificationFieldLabel(specSchema.table.replace('_specs', ''))} Specifications</h3>
+              <p className="mt-1 text-[10px] text-slate-500">These fields use this product category’s existing specification record. Leave values blank when they do not apply.</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {specSchema.keys.map((key) => {
+                  const type = specificationFieldType(specSchema, key);
+                  return <label key={key} className="text-xs font-medium text-slate-600">{specificationFieldLabel(key)}
+                    {type === 'boolean' ? <select value={specValues[key] ?? ''} onChange={(event) => setSpecValues((current) => ({ ...current, [key]: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="">Not specified</option><option value="true">Yes</option><option value="false">No</option></select>
+                      : <input type={type === 'number' ? 'number' : 'text'} min={type === 'number' ? '0' : undefined} step={key === 'screen_size_inches' ? '0.1' : type === 'number' ? '1' : undefined} value={specValues[key] ?? ''} onChange={(event) => setSpecValues((current) => ({ ...current, [key]: event.target.value }))} placeholder={type === 'list' ? 'Separate values with commas' : ''} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" />}
+                  </label>;
+                })}
+              </div>
+            </section> : <p className="mt-4 text-[10px] text-slate-500">No structured specification fields are defined for this category.</p>}
+            <button disabled={saving || specLoading} type="submit" className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? 'Saving…' : editingProduct ? 'Save Changes' : 'Save Product'}
             </button>
           </form>
@@ -350,7 +448,7 @@ export default function AdminProductCatalog({ onLogout }) {
           <div className="rounded-xl bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between"><p className="text-xs font-medium text-slate-600">Active Catalog</p><span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-600"><Package size={13} /></span></div>
             <p className="mt-2 text-2xl font-bold">{activeCount.toLocaleString()}<span className="ml-1 text-xs font-medium text-slate-500">Products</span></p>
-            <p className="mt-2 text-[11px] text-slate-500"><span className="font-semibold text-emerald-600">{products.length} listed</span> in Supabase</p>
+            <p className="mt-2 text-[11px] text-slate-500"><span className="font-semibold text-emerald-600">{products.length} listed</span> products</p>
             <button type="button" onClick={resetFilters} className="mt-3 text-xs font-medium text-blue-600 hover:text-blue-800">View full inventory →</button>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-sm">
@@ -399,7 +497,7 @@ export default function AdminProductCatalog({ onLogout }) {
           </div>
 
           {loading ? (
-            <div className="px-4 py-12 text-center text-xs text-slate-500">Loading products from Supabase…</div>
+            <div className="px-4 py-12 text-center text-xs text-slate-500">Loading products…</div>
           ) : view === 'list' ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-190 text-left">
@@ -409,7 +507,7 @@ export default function AdminProductCatalog({ onLogout }) {
                 <tbody>
                   {visibleProducts.map((product) => {
                     const ProductIcon = product.icon;
-                    const lowStock = product.stock > 0 && product.stock < 10;
+                    const lowStock = product.stock > 0 && product.stock <= 5;
                     return <tr key={product.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                       <td className="px-3 py-3"><div className="flex items-center gap-2.5"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-50 text-blue-600"><ProductIcon size={15} /></span><div className="min-w-0"><p className="max-w-65 text-xs font-bold text-slate-800">{product.name}</p><p className="mt-0.5 text-[10px] text-slate-400">SKU: {product.sku || '—'}</p></div></div></td>
                       <td className="px-3 py-3"><span className="rounded bg-blue-50 px-1.5 py-1 text-[10px] font-medium text-slate-600">{product.category}</span></td>

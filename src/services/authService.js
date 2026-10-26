@@ -62,47 +62,30 @@ export async function signUp({
 
 export async function signInWithEmail({ email, password }) {
   const identifier = email.trim().toLowerCase();
-
-  let loginEmail = identifier;
-
-  // If the user entered a username, resolve it to an email first.
   if (!identifier.includes("@")) {
     const { data, error } = await supabase.functions.invoke(
       "username-to-email",
       {
-        body: { identifier },
+        body: { identifier, password },
       }
     );
 
-    console.log("Username lookup response:", { data, error });
-
-    if (error || data?.error || !data?.email) {
+    if (error || data?.error || !data?.session?.access_token || !data?.session?.refresh_token) {
       throw new Error(
-        data?.error || "Invalid username or password."
+        "Invalid username or password."
       );
     }
-
-    loginEmail = data.email;
+    const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+    if (sessionError) throw sessionError;
+    return { user: sessionData.user };
   }
 
-  // Authenticate using the resolved email and password.
- 
-const { data, error } = await supabase.auth.signInWithPassword({
-  email: loginEmail,
-  password,
-});
-
-if (error) {
-  console.error("Supabase sign-in error:", {
-    message: error.message,
-    status: error.status,
-    code: error.code,
-  });
-
-  throw error;
-}
-
-return { user: data.user };
+  const { data, error } = await supabase.auth.signInWithPassword({ email: identifier, password });
+  if (error) throw error;
+  return { user: data.user };
 
 }
 

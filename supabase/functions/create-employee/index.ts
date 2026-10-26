@@ -86,12 +86,123 @@ Deno.serve(async (req: Request) => {
 
     if (roleRecord?.role !== "admin") {
       return Response.json(
-        { error: "Only admins can create employee accounts." },
+        { error: "Only admins can manage staff accounts." },
         { status: 403, headers: corsHeaders },
       );
     }
 
-    const body = await req.json();
+    let body: Record<string, unknown>;
+    try {
+      const parsedBody = await req.json();
+      if (!parsedBody || typeof parsedBody !== "object" || Array.isArray(parsedBody)) {
+        return Response.json({ error: "A valid account action is required." }, { status: 400, headers: corsHeaders });
+      }
+      body = parsedBody as Record<string, unknown>;
+    } catch {
+      return Response.json({ error: "The request body must be valid JSON." }, { status: 400, headers: corsHeaders });
+    }
+    const action = typeof body.action === "string" ? body.action : "";
+
+    if (action === "list_users") {
+      const allUsers = [];
+      for (let page = 1; page <= 100; page += 1) {
+        const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 1000 });
+        if (error) throw new Error("Unable to load account list.");
+        allUsers.push(...data.users);
+        if (data.users.length < 1000) break;
+      }
+      if (allUsers.length >= 100_000) throw new Error("Account list exceeds the supported page limit.");
+      const profilesById = new Map<string, Record<string, unknown>>();
+      const rolesById = new Map<string, string>();
+      for (let offset = 0; offset < allUsers.length; offset += 100) {
+        const ids = allUsers.slice(offset, offset + 100).map((user) => user.id);
+        const [profileResult, roleResult] = await Promise.all([
+          adminClient.from("profiles").select("id, username, display_name, phone, created_at").in("id", ids),
+          adminClient.from("user_roles").select("user_id, role").in("user_id", ids),
+        ]);
+        if (profileResult.error || roleResult.error) throw new Error("Unable to load account records.");
+        for (const profile of profileResult.data ?? []) profilesById.set(profile.id, profile);
+        for (const role of roleResult.data ?? []) rolesById.set(role.user_id, role.role);
+      }
+      const users = allUsers.map((user) => {
+        const profile = profilesById.get(user.id);
+        const bannedUntil = user.banned_until ? Date.parse(user.banned_until) : 0;
+        const status = user.deleted_at || bannedUntil > Date.now()
+          ? "Inactive"
+          : user.email_confirmed_at
+            ? "Active"
+            : user.invited_at
+              ? "Invited"
+              : "Unknown";
+        const role = rolesById.get(user.id);
+        return {
+          id: user.id,
+          email: typeof user.email === "string" && user.email ? user.email : "Not available",
+          name: typeof profile?.display_name === "string" && profile.display_name
+            ? profile.display_name
+            : typeof profile?.username === "string" && profile.username
+              ? profile.username
+              : "Not available",
+          username: typeof profile?.username === "string" && profile.username ? profile.username : "Not available",
+          phone: profile?.phone ?? "",
+          createdAt: profile?.created_at ?? user.created_at,
+          role: role === "admin" ? "Admin" : role === "employee" ? "Staff" : "User",
+          isCurrentUser: user.id === caller.id,
+          status,
+        };
+      }).filter((user) => user.role === "Admin" || user.role === "Staff");
+      return Response.json({ users }, { headers: corsHeaders });
+    }
+
+    if (action === "send_password_reset") {
+      const userId = typeof body.user_id === "string" ? body.user_id : "";
+      if (!userId) return Response.json({ error: "A valid account is required." }, { status: 400, headers: corsHeaders });
+      const { data: role, error: targetRoleError } = await adminClient.from("user_roles")
+        .select("role").eq("user_id", userId).maybeSingle();
+      if (targetRoleError || role?.role !== "employee") {
+        return Response.json({ error: "Password reset is available for staff accounts only." }, { status: 404, headers: corsHeaders });
+      }
+      const { data: target, error: targetError } = await adminClient.auth.admin.getUserById(userId);
+      if (targetError || !target.user?.email) {
+        return Response.json({ error: "Unable to send the account recovery email." }, { status: 400, headers: corsHeaders });
+      }
+      const recoveryClient = createClient(supabaseUrl, anonKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const redirectTo = typeof body.redirect_to === "string" ? body.redirect_to : undefined;
+      const { error: recoveryError } = await recoveryClient.auth.resetPasswordForEmail(target.user.email, { redirectTo });
+      if (recoveryError) return Response.json({ error: "Unable to send the account recovery email." }, { status: 400, headers: corsHeaders });
+      return Response.json({ message: "Account recovery email sent." }, { headers: corsHeaders });
+    }
+
+    if (action === "set_role") {
+      const userId = typeof body.user_id === "string" ? body.user_id : "";
+      const role = typeof body.role === "string" ? body.role : "";
+      if (!userId || !["customer", "employee", "admin"].includes(role)) {
+        return Response.json({ error: "Choose a valid account and role." }, { status: 400, headers: corsHeaders });
+      }
+      if (userId === caller.id) {
+        return Response.json({ error: "You cannot change your own role." }, { status: 403, headers: corsHeaders });
+      }
+      const { data: currentRole, error: currentRoleError } = await adminClient.from("user_roles")
+        .select("role").eq("user_id", userId).maybeSingle();
+      if (currentRoleError || !currentRole) return Response.json({ error: "No role record exists for this account." }, { status: 404, headers: corsHeaders });
+      if (currentRole.role === "admin" && role !== "admin") {
+        const { count, error: countError } = await adminClient.from("user_roles")
+          .select("user_id", { count: "exact", head: true }).eq("role", "admin");
+        if (countError) return Response.json({ error: "Unable to verify administrator coverage." }, { status: 500, headers: corsHeaders });
+        if ((count ?? 0) <= 1) return Response.json({ error: "The last administrator cannot be demoted." }, { status: 409, headers: corsHeaders });
+      }
+      const { data: updated, error: updateError } = await adminClient.from("user_roles")
+        .update({ role }).eq("user_id", userId).select("user_id");
+      if (updateError) return Response.json({ error: "Unable to update this account role." }, { status: 400, headers: corsHeaders });
+      if (!updated?.length) return Response.json({ error: "No role record exists for this account." }, { status: 404, headers: corsHeaders });
+      return Response.json({ message: "Account role updated." }, { headers: corsHeaders });
+    }
+
+    if (action !== "create_staff") {
+      return Response.json({ error: "Unsupported account action." }, { status: 400, headers: corsHeaders });
+    }
     const email =
       typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const username =
@@ -151,13 +262,18 @@ Deno.serve(async (req: Request) => {
 
     // The auth trigger creates the profile and initial customer role.
     // Promote the new account to employee using the privileged client.
-    const { error: updateRoleError } = await adminClient
+    const { data: roleAssignment, error: updateRoleError } = await adminClient
       .from("user_roles")
       .update({ role: "employee" })
-      .eq("user_id", employeeId);
+      .eq("user_id", employeeId)
+      .select("user_id")
+      .maybeSingle();
 
-    if (updateRoleError) {
-      console.error("Employee role assignment failed:", updateRoleError.message);
+    const { data: profileRecord, error: profileError } = await adminClient
+      .from("profiles").select("id").eq("id", employeeId).maybeSingle();
+
+    if (updateRoleError || !roleAssignment || profileError || !profileRecord) {
+      console.error("Employee setup failed:", updateRoleError?.message ?? profileError?.message ?? "Profile or role record missing");
 
       // Avoid leaving an invited account with the wrong role.
       const { error: deleteError } =
