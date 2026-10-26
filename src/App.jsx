@@ -1,4 +1,3 @@
-
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
@@ -23,6 +22,7 @@ import CheckoutPage from "./pages/customer/CheckoutPage.jsx";
 import MyOrdersPage from "./pages/customer/MyOrdersPage.jsx";
 import OrderDetailsPage from "./pages/customer/OrderDetailsPage.jsx";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import AdminRoute from "./components/auth/AdminRoute";
 
 import Dashboard from "./pages/admin/Dashboard.jsx";
 import AdminProductCatalog from "./pages/admin/AdminProductCatalog.jsx";
@@ -35,15 +35,21 @@ import AdminSystemSettings from "./pages/admin/AdminSystemSettings.jsx";
 function AppRoutes() {
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("Logout failed:", error);
-      alert(error.message || "Logout failed. Please try again.");
-    }
-  };
+  
+const handleLogout = async () => {
+  setIsLoggingOut(true);
+
+  try {
+    await signOut();
+    navigate("/login", { replace: true });
+  } catch (error) {
+    console.error("Logout failed:", error);
+    alert("Unable to log out. Please try again.");
+  } finally {
+    setIsLoggingOut(false);
+  }
+};
+
 
   return (
     <Routes>
@@ -62,14 +68,20 @@ function AppRoutes() {
 
       <Route path="/product/:id" element={<ProductDetails />} />
 
-      {/* Admin */}
-      <Route path="/admin" element={<Dashboard onLogout={handleLogout} />} />
-      <Route path="/admin/products" element={<AdminProductCatalog onLogout={handleLogout} />} />
-      <Route path="/admin/pricing" element={<AdminPriceManagement onLogout={handleLogout} />} />
-      <Route path="/admin/inventory" element={<AdminInventoryManagement onLogout={handleLogout} />} />
-      <Route path="/admin/orders" element={<AdminOrderFulfillment onLogout={handleLogout} />} />
-      <Route path="/admin/reports" element={<AdminReportsAnalytics onLogout={handleLogout} />} />
-      <Route path="/admin/settings" element={<AdminSystemSettings onLogout={handleLogout} />} />
+      {/* Admin + Staff (employee) */}
+      <Route element={<AdminRoute allow={["admin", "employee"]} />}>
+        <Route path="/admin" element={<Dashboard onLogout={handleLogout} />} />
+        <Route path="/admin/products" element={<AdminProductCatalog onLogout={handleLogout} />} />
+        <Route path="/admin/pricing" element={<AdminPriceManagement onLogout={handleLogout} />} />
+        <Route path="/admin/inventory" element={<AdminInventoryManagement onLogout={handleLogout} />} />
+        <Route path="/admin/orders" element={<AdminOrderFulfillment onLogout={handleLogout} />} />
+
+        {/* Admin only */}
+        <Route element={<AdminRoute allow={["admin"]} />}>
+          <Route path="/admin/reports" element={<AdminReportsAnalytics onLogout={handleLogout} />} />
+          <Route path="/admin/settings" element={<AdminSystemSettings onLogout={handleLogout} />} />
+        </Route>
+      </Route>
 
       {/* Protected customer pages */}
       <Route element={<ProtectedRoute />}>

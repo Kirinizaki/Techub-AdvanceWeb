@@ -50,11 +50,15 @@ try {
     throw new Error("Unable to verify your account role.");
   }
 
-  if (roleData?.role === "admin") {
-    navigate("/admin", { replace: true });
-  } else {
-    navigate("/", { replace: true });
-  }
+  
+if (roleData?.role === "admin" || roleData?.role === "employee") {
+  navigate("/admin", { replace: true });
+} else if (roleData?.role === "customer") {
+  navigate("/", { replace: true });
+} else {
+  throw new Error("Your account has no valid role. Please contact support.");
+}
+
 } catch (error) {
   console.error("Login error:", error);
 
