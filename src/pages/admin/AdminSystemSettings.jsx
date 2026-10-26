@@ -1,9 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Settings,
   Users,
-  ShieldCheck,
-  Bell,
   ChevronRight,
   Building2,
   Clock,
@@ -23,8 +20,13 @@ import {
   UserX,
   Mail,
   Shield,
+  ShieldCheck,
 } from 'lucide-react';
-
+import {
+  createStaff,
+  resetStaffPassword,
+  getAdminUsers,
+} from '../../lib/adminStaffService';
 import AdminLayout from '../../layouts/AdminLayout';
 
 /* ---------- Default settings ---------- */
@@ -45,10 +47,7 @@ const defaultSettings = {
 };
 
 const settingsTabs = [
-  { label: 'General Settings', icon: Settings },
   { label: 'User & Role Management', icon: Users },
-  { label: 'Security & Access', icon: ShieldCheck },
-  { label: 'Notifications', icon: Bell },
 ];
 
 /* ---------- Available roles ---------- */
@@ -174,125 +173,31 @@ function Toggle({ checked, onChange, label }) {
   );
 }
 
-function SettingRow({
-  title,
-  description,
-  checked,
-  onChange,
-  label,
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-slate-100 py-4 last:border-b-0">
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-slate-700">
-          {title}
-        </p>
 
-        <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-          {description}
-        </p>
-      </div>
 
-      <Toggle
-        checked={checked}
-        onChange={onChange}
-        label={label || title}
-      />
-    </div>
-  );
-}
-
-/* ---------- General settings ---------- */
-
-function GeneralSettings({ settings, updateSetting }) {
-  return (
-    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
-      <SectionHeading
-        icon={Settings}
-        title="General Preferences"
-        description="Configure your company details, regional settings and default formats."
-      />
-
-      <div className="mt-5 grid grid-cols-1 gap-x-5 gap-y-5 sm:grid-cols-2">
-        <Field label="Company Name" icon={Building2}>
-          <input
-            type="text"
-            value={settings.companyName}
-            onChange={(event) =>
-              updateSetting('companyName', event.target.value)
-            }
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-          />
-        </Field>
-
-        <SelectField
-          label="Time Zone"
-          icon={Clock}
-          value={settings.timeZone}
-          onChange={(value) => updateSetting('timeZone', value)}
-          options={[
-            { value: 'Asia/Manila', label: 'Asia/Manila' },
-            { value: 'Asia/Singapore', label: 'Asia/Singapore' },
-            { value: 'Asia/Tokyo', label: 'Asia/Tokyo' },
-            { value: 'UTC', label: 'UTC' },
-          ]}
-        />
-
-        <SelectField
-          label="Currency"
-          icon={CircleDollarSign}
-          value={settings.currency}
-          onChange={(value) => updateSetting('currency', value)}
-          options={[
-            { value: 'PHP', label: 'PHP ₱' },
-            { value: 'USD', label: 'USD $' },
-            { value: 'EUR', label: 'EUR €' },
-            { value: 'JPY', label: 'JPY ¥' },
-          ]}
-        />
-
-        <SelectField
-          label="Date Format"
-          icon={CalendarDays}
-          value={settings.dateFormat}
-          onChange={(value) => updateSetting('dateFormat', value)}
-          options={[
-            { value: 'MMM D, YYYY', label: 'MMM D, YYYY' },
-            { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY' },
-            { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' },
-            { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' },
-          ]}
-        />
-
-        <SelectField
-          label="Language"
-          icon={Languages}
-          value={settings.language}
-          onChange={(value) => updateSetting('language', value)}
-          options={[
-            { value: 'English', label: 'English' },
-            { value: 'Filipino', label: 'Filipino' },
-          ]}
-        />
-      </div>
-    </section>
-  );
-}
 
 /* ---------- User and role management ---------- */
 
+
 function UserRoleSettings({
   users,
+  usersLoading,
+  usersError,
   onAddUser,
   onEditUser,
   onToggleUser,
 }) {
+
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formError, setFormError] = useState('');
   const [userNotice, setUserNotice] = useState('');
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resetUser, setResetUser] = useState(null);
+const [newPassword, setNewPassword] = useState('');
+const [resetError, setResetError] = useState('');
+const [isResetting, setIsResetting] = useState(false);
   const emptyForm = {
     name: '',
     email: '',
@@ -342,71 +247,106 @@ function UserRoleSettings({
     setFormError('');
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  
+const handleSubmit = async (event) => {
+  event.preventDefault();
 
-    setFormError('');
+  setFormError('');
+  setUserNotice('');
+
+  const name = form.name.trim();
+  const email = form.email.trim().toLowerCase();
+
+  if (!name || !email || !form.role) {
+    setFormError('Please complete all required fields.');
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setFormError('Please enter a valid email address.');
+    return;
+  }
+
+  if (editingId) {
+    setFormError(
+      'Editing accounts is not connected to the database yet.'
+    );
+    return;
+  }
+
+  if (form.role !== 'Staff') {
+    setFormError(
+      'Only Staff account creation is connected. Admin and User creation need separate secure handling.'
+    );
+    return;
+  }
+
+  if (form.password.length < 12) {
+    setFormError(
+      'The temporary password must be at least 12 characters.'
+    );
+    return;
+  }
+
+  try {
+    setIsSubmitting(true);
+
+    const username = email.split('@')[0].toLowerCase();
+
+    await createStaff({
+  email,
+  username,
+  displayName: name,
+  password: form.password,
+});
+
+const updatedUsers = await getAdminUsers();
+onAddUser(updatedUsers);
+closeForm();
+setUserNotice(
+  'Staff account created. Email confirmation may be required before sign-in.'
+);
+  } catch (error) {
+    setFormError(
+      error.message || 'Unable to create the Staff account.'
+    );
+  } finally {
+    setIsSubmitting(false);
+  }
+  
+};
+
+  const handlePasswordReset = async (event) => {
+    event.preventDefault();
+    setResetError('');
     setUserNotice('');
 
-    const name = form.name.trim();
-    const email = form.email.trim().toLowerCase();
+    if (!resetUser) return;
 
-    if (!name || !email || !form.role) {
-      setFormError('Please complete all required fields.');
+    if (newPassword.length < 12) {
+      setResetError('The new password must be at least 12 characters.');
       return;
     }
 
-    if (!availableRoles.includes(form.role)) {
-      setFormError(
-        'Please select Admin, Staff, or User.'
+    try {
+      setIsResetting(true);
+
+      await resetStaffPassword(resetUser.id, newPassword);
+
+      setUserNotice(
+        `Password reset successfully for ${resetUser.name}.`
       );
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setFormError('Please enter a valid email address.');
-      return;
-    }
-
-    const duplicateEmail = users.some(
-      (user) =>
-        user.email.toLowerCase() === email &&
-        user.id !== editingId
-    );
-
-    if (duplicateEmail) {
-      setFormError('This email address is already in use.');
-      return;
-    }
-
-    if (!editingId && form.password.length < 8) {
-      setFormError(
-        'The temporary password must be at least 8 characters.'
+      setResetUser(null);
+      setNewPassword('');
+    } catch (error) {
+      setResetError(
+        error.message || 'Unable to reset the staff password.'
       );
-      return;
+    } finally {
+      setIsResetting(false);
     }
-
-    if (editingId) {
-      onEditUser(editingId, {
-        name,
-        email,
-        role: form.role,
-      });
-
-      setUserNotice('User details updated.');
-    } else {
-      onAddUser({
-        name,
-        email,
-        role: form.role,
-        status: 'Active',
-      });
-
-      setUserNotice(`${form.role} record added successfully.`);
-    }
-
-    closeForm();
   };
+
 
   const activeCount = users.filter(
     (user) => user.status === 'Active'
@@ -568,7 +508,7 @@ function UserRoleSettings({
                   <input
                     type="password"
                     required
-                    minLength={8}
+                    minLength={12}
                     autoComplete="new-password"
                     value={form.password}
                     onChange={(event) =>
@@ -577,18 +517,14 @@ function UserRoleSettings({
                         password: event.target.value,
                       }))
                     }
-                    placeholder="At least 8 characters"
+                    placeholder="At least 12 characters"
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </Field>
               )}
             </div>
 
-            <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-              Demo only: the password is validated but is not saved or used
-              to create a login account. Connect an authentication provider
-              before using this for real accounts.
-            </p>
+           
 
             {formError && (
               <p
@@ -610,10 +546,87 @@ function UserRoleSettings({
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700"
               >
                 <Save size={14} />
-                {editingId ? 'Save User' : 'Add User'}
+                {isSubmitting
+                  ? 'Creating Staff...'
+                  : editingId
+                  ? 'Save User'
+                  : 'Add User'}
+              </button>
+            </div>
+          </form>
+        )}
+        
+        {resetUser && (
+          <form
+            onSubmit={handlePasswordReset}
+            className="mt-5 rounded-xl border border-amber-100 bg-amber-50/50 p-4 sm:p-5"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">
+                  Reset Staff Password
+                </h3>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Set a new password for {resetUser.name}.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setResetUser(null);
+                  setNewPassword('');
+                  setResetError('');
+                }}
+                aria-label="Close password reset form"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <Field label="New Password *" icon={ShieldCheck}>
+              <input
+                type="password"
+                required
+                minLength={12}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                placeholder="At least 12 characters"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+            </Field>
+
+            {resetError && (
+              <p role="alert" className="mt-3 text-xs font-medium text-rose-600">
+                {resetError}
+              </p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setResetUser(null);
+                  setNewPassword('');
+                  setResetError('');
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={isResetting}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {isResetting ? 'Resetting...' : 'Reset Password'}
               </button>
             </div>
           </form>
@@ -638,7 +651,17 @@ function UserRoleSettings({
             className="w-full bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400"
           />
         </div>
+        {usersLoading && (
+  <p role="status" className="mt-4 text-xs text-slate-500">
+    Loading users from Supabase...
+  </p>
+)}
 
+{usersError && (
+  <p role="alert" className="mt-4 text-xs text-rose-600">
+    Could not load users: {usersError}
+  </p>
+)}
         {/* User table */}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-162.5 text-left">
@@ -720,6 +743,23 @@ function UserRoleSettings({
                       >
                         <Pencil size={13} />
                       </button>
+                        
+{user.role === 'Staff' && (
+  <button
+    type="button"
+    onClick={() => {
+      setResetUser(user);
+      setNewPassword('');
+      setResetError('');
+      setUserNotice('');
+    }}
+    aria-label={`Reset password for ${user.name}`}
+    title="Reset staff password"
+    className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-100 text-amber-600 hover:bg-amber-50"
+  >
+    <ShieldCheck size={14} />
+  </button>
+)}
 
                       <button
                         type="button"
@@ -751,7 +791,7 @@ function UserRoleSettings({
                 </tr>
               ))}
 
-              {filteredUsers.length === 0 && (
+              {!usersLoading && !usersError && filteredUsers.length === 0 && (
                 <tr>
                   <td colSpan={4} className="py-10 text-center">
                     <div className="flex flex-col items-center gap-2">
@@ -831,116 +871,18 @@ function UserRoleSettings({
   );
 }
 
-/* ---------- Security settings ---------- */
 
-function SecuritySettings({ settings, updateSetting }) {
-  return (
-    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
-      <SectionHeading
-        icon={ShieldCheck}
-        title="Security & Access"
-        description="Configure the displayed authentication and session preferences."
-      />
 
-      <div className="mt-1">
-        <SettingRow
-          title="Two-Factor Authentication"
-          description="Require 2FA for administrator accounts and sensitive actions."
-          checked={settings.twoFactor}
-          onChange={(value) => updateSetting('twoFactor', value)}
-        />
 
-        <div className="border-b border-slate-100 py-4">
-          <Field label="Session Timeout" icon={Clock}>
-            <select
-              value={settings.sessionTimeout}
-              onChange={(event) =>
-                updateSetting('sessionTimeout', event.target.value)
-              }
-              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            >
-              <option>15 minutes</option>
-              <option>30 minutes</option>
-              <option>60 minutes</option>
-              <option>120 minutes</option>
-            </select>
-          </Field>
-
-          <p className="mt-2 text-[11px] text-slate-500">
-            Selected preference only; actual automatic logout must be
-            implemented separately.
-          </p>
-        </div>
-
-        <SettingRow
-          title="Password Policy"
-          description="Enable the strong-password policy for user accounts."
-          checked={settings.passwordPolicy}
-          onChange={(value) => updateSetting('passwordPolicy', value)}
-        />
-      </div>
-    </section>
-  );
-}
-
-/* ---------- Notification settings ---------- */
-
-function NotificationSettings({ settings, updateSetting }) {
-  return (
-    <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
-      <SectionHeading
-        icon={Bell}
-        title="Notification Preferences"
-        description="Choose which notification preferences are enabled in this interface."
-      />
-
-      <div className="mt-1">
-        <SettingRow
-          title="Email Notifications"
-          description="Receive important administrative updates by email."
-          checked={settings.emailNotifications}
-          onChange={(value) =>
-            updateSetting('emailNotifications', value)
-          }
-        />
-
-        <SettingRow
-          title="Order Notifications"
-          description="Get notified when orders are placed or their status changes."
-          checked={settings.orderNotifications}
-          onChange={(value) =>
-            updateSetting('orderNotifications', value)
-          }
-        />
-
-        <SettingRow
-          title="Inventory Notifications"
-          description="Receive alerts about low stock and inventory changes."
-          checked={settings.inventoryNotifications}
-          onChange={(value) =>
-            updateSetting('inventoryNotifications', value)
-          }
-        />
-
-        <SettingRow
-          title="Security Notifications"
-          description="Show preference for sign-in and security-related alerts."
-          checked={settings.securityNotifications}
-          onChange={(value) =>
-            updateSetting('securityNotifications', value)
-          }
-        />
-      </div>
-    </section>
-  );
-}
 
 /* ---------- Main System Settings page ---------- */
 
 export default function AdminSystemSettings({onLogout}) {
-  const [activeTab, setActiveTab] = useState('General Settings');
+  const [activeTab, setActiveTab] = useState('User & Role Management');
   const [settings, setSettings] = useState({ ...defaultSettings });
   const [users, setUsers] = useState([]);
+const [usersLoading, setUsersLoading] = useState(true);
+const [usersError, setUsersError] = useState('');
   const [notice, setNotice] = useState('');
 
   const updateSetting = (key, value) => {
@@ -951,22 +893,43 @@ export default function AdminSystemSettings({onLogout}) {
 
     setNotice('');
   };
+  useEffect(() => {
+  let isMounted = true;
 
-  const addUser = (newUser) => {
-    if (!availableRoles.includes(newUser.role)) {
-      setNotice('Please select a valid role.');
-      return;
+  async function loadUsers() {
+    try {
+      setUsersLoading(true);
+      setUsersError('');
+
+      const data = await getAdminUsers();
+
+      if (isMounted) {
+        setUsers(data);
+      }
+    } catch (error) {
+      if (isMounted) {
+        setUsersError(
+          error.message || 'Unable to load users.'
+        );
+      }
+    } finally {
+      if (isMounted) {
+        setUsersLoading(false);
+      }
     }
+  }
 
-    const user = {
-      ...newUser,
-      id: crypto.randomUUID(),
-      status: 'Active',
-    };
+  loadUsers();
 
-    setUsers((current) => [...current, user]);
-    setNotice(`${newUser.role} record added.`);
+  return () => {
+    isMounted = false;
   };
+}, []);
+ 
+const addUser = (updatedUsers) => {
+  setUsers(updatedUsers);
+};
+
 
   const editUser = (id, updatedDetails) => {
     if (!availableRoles.includes(updatedDetails.role)) {
@@ -1022,8 +985,7 @@ export default function AdminSystemSettings({onLogout}) {
           </h1>
 
           <p className="mt-1 text-xs text-slate-500">
-            Manage system preferences, security, users, and operational
-            configurations.
+            Manage users and operational configurations.
           </p>
         </div>
 
@@ -1072,36 +1034,20 @@ export default function AdminSystemSettings({onLogout}) {
 
         {/* Active settings section */}
         <div className="min-w-0">
-          {activeTab === 'General Settings' && (
-            <GeneralSettings
-              settings={settings}
-              updateSetting={updateSetting}
-            />
-          )}
-
           {activeTab === 'User & Role Management' && (
-            <UserRoleSettings
-              users={users}
-              onAddUser={addUser}
-              onEditUser={editUser}
-              onToggleUser={toggleUserStatus}
-            />
+            
+<UserRoleSettings
+  users={users}
+  usersLoading={usersLoading}
+  usersError={usersError}
+  onAddUser={addUser}
+  onEditUser={editUser}
+  onToggleUser={toggleUserStatus}
+/>
+
           )}
 
-          {activeTab === 'Security & Access' && (
-            <SecuritySettings
-              settings={settings}
-              updateSetting={updateSetting}
-            />
-          )}
-
-          {activeTab === 'Notifications' && (
-            <NotificationSettings
-              settings={settings}
-              updateSetting={updateSetting}
-            />
-          )}
-        </div>
+       </div>
 
         {/* Save and reset actions */}
         <section className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
