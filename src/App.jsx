@@ -31,6 +31,7 @@ import AdminInventoryManagement from "./pages/admin/AdminInventoryManagement.jsx
 import AdminOrderFulfillment from "./pages/admin/AdminOrderFulfillment.jsx";
 import AdminReportsAnalytics from "./pages/admin/AdminReportsAnalytics.jsx";
 import AdminSystemSettings from "./pages/admin/AdminSystemSettings.jsx";
+import AdminSupportInbox from "./pages/admin/AdminSupportInbox.jsx";
 
 function AppRoutes() {
   const navigate = useNavigate();
@@ -75,6 +76,7 @@ const handleLogout = async () => {
         <Route path="/admin/pricing" element={<AdminPriceManagement onLogout={handleLogout} />} />
         <Route path="/admin/inventory" element={<AdminInventoryManagement onLogout={handleLogout} />} />
         <Route path="/admin/orders" element={<AdminOrderFulfillment onLogout={handleLogout} />} />
+        <Route path="/admin/support" element={<AdminSupportInbox onLogout={handleLogout} />} />
 
         {/* Admin only */}
         <Route element={<AdminRoute allow={["admin"]} />}>

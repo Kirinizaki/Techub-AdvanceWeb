@@ -457,3 +457,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/manage-order-fulfillment/deno.json"
 entrypoint = "./functions/manage-order-fulfillment/index.ts"
+
+[functions.manage-products]
+enabled = true
+verify_jwt = false
+import_map = "./functions/manage-products/deno.json"
+entrypoint = "./functions/manage-products/index.ts"

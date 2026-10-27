@@ -9,7 +9,6 @@ import { supabase } from '../../lib/supabaseClient';
 import { fetchAllRows } from '../../lib/fetchAllRows';
 import {
   loadProductSpecifications,
-  saveProductSpecifications,
   specificationFieldLabel,
   specificationFieldType,
   specificationTableForCategory,
@@ -52,6 +51,62 @@ const blankProduct = {
   image_url: '',
   product_type: '',
 };
+
+async function invokeProductManager(body) {
+  const { data, error } = await supabase.functions.invoke('manage-products', { body });
+
+  if (error) {
+    let message = error.message || 'Product operation failed.';
+    try {
+      const details = await error.context?.json();
+      if (details?.error) message = details.error;
+    } catch {
+      // Keep the Functions error message if the response body is unavailable.
+    }
+    throw new Error(message);
+  }
+
+  if (data?.error) throw new Error(data.error);
+  if (typeof data?.product_id !== 'string') {
+    throw new Error('The product service returned an unexpected response.');
+  }
+
+  return data.product_id;
+}
+
+const normalizeSpecificationValues = (schema, values) =>
+  Object.fromEntries(schema.keys.map((key) => {
+    const raw = values[key];
+
+    if (raw === '' || raw === undefined || raw === null) return [key, null];
+
+    if (schema.numbers?.includes(key)) {
+      const number = Number(raw);
+      if (!Number.isFinite(number) || number < 0 ||
+          (key !== 'screen_size_inches' && !Number.isInteger(number))) {
+        throw new Error(`${specificationFieldLabel(key)} must be a valid nonnegative ${key === 'screen_size_inches' ? 'number' : 'whole number'}.`);
+      }
+      return [key, number];
+    }
+
+    if (schema.booleans?.includes(key)) {
+      return [key, raw === true || raw === 'true'];
+    }
+
+    if (schema.arrays?.includes(key)) {
+      const parts = Array.isArray(raw) ? raw : String(raw).split(',');
+      const items = parts.map((part) => String(part).trim()).filter(Boolean);
+      if (key === 'included_fan_sizes_mm') {
+        if (items.some((item) => !Number.isInteger(Number(item)) || Number(item) < 0)) {
+          throw new Error('Included fan sizes must be nonnegative whole numbers separated by commas.');
+        }
+        return [key, items.map(Number)];
+      }
+      return [key, items];
+    }
+
+    return [key, String(raw).trim()];
+  }));
 
 export default function AdminProductCatalog({ onLogout }) {
   const [products, setProducts] = useState([]);
@@ -245,35 +300,29 @@ export default function AdminProductCatalog({ onLogout }) {
     };
 
     setSaving(true);
-    let productId = editingProduct?.id;
     try {
-      if (editingProduct) {
-        const result = await supabase.from('products').update(payload).eq('id', editingProduct.id).select('id');
-        if (result.error) throw result.error;
-        if (!result.data?.length) throw new Error('Product was not updated. Check your account permissions.');
-      } else {
-        const result = await supabase.from('products').insert(payload).select('id').single();
-        if (result.error) throw result.error;
-        productId = result.data.id;
-      }
+      const specification = specSchema
+        ? {
+            table: specSchema.table,
+            values: normalizeSpecificationValues(specSchema, specValues),
+          }
+        : null;
 
-      if (specSchema && !specError) {
-        await saveProductSpecifications(productId, specSchema, specValues, existingSpecSchema);
-      } else if (specError) {
-        throw new Error(`Product saved, but its specifications were not saved: ${specError}`);
-      }
+      await invokeProductManager({
+        action: editingProduct ? 'update' : 'create',
+        product_id: editingProduct?.id ?? null,
+        product: payload,
+        specification,
+      });
 
       await loadCatalog();
       clearForm();
       resetFilters();
-      setNotice(editingProduct ? 'Product and specifications updated successfully.' : 'Product and specifications added successfully.');
+      setNotice(editingProduct
+        ? 'Product and specifications updated successfully.'
+        : 'Product and specifications added successfully.');
     } catch (saveError) {
       setError(saveError.message || 'Could not save product changes.');
-      if (productId && !editingProduct) {
-        await loadCatalog();
-        clearForm();
-        setNotice('Product record was saved; review the error above before retrying its specifications.');
-      }
     } finally {
       setSaving(false);
     }
@@ -302,11 +351,12 @@ export default function AdminProductCatalog({ onLogout }) {
   const handleDuplicate = async (product) => {
     setError('');
     setNotice('');
-    const name = `${product.name} (Copy)`;
+    setSaving(true);
+
     const payload = {
-      name,
-      slug: `${makeSlug(name)}-${Date.now().toString(36)}`,
-      sku: product.sku ? `${product.sku}-COPY-${Date.now().toString(36)}` : null,
+      name: product.name,
+      slug: product.slug || makeSlug(product.name) || `product-${Date.now()}`,
+      sku: product.sku || null,
       description: product.description || null,
       price: Number(product.price),
       image_url: product.image_url || null,
@@ -315,24 +365,22 @@ export default function AdminProductCatalog({ onLogout }) {
       stock_quantity: Number(product.stock_quantity || 0),
       is_active: Boolean(product.is_active),
       product_type: product.product_type || null,
-      updated_at: new Date().toISOString(),
     };
-    const { data: copy, error: insertError } = await supabase.from('products').insert(payload).select('id').single();
-    if (insertError) {
-      setError(insertError.message);
-      return;
-    }
-    let specificationsCopied = true;
+
     try {
-      const specification = await loadProductSpecifications(product.id);
-      if (specification.schema) await saveProductSpecifications(copy.id, specification.schema, specification.values, null);
-    } catch (specificationError) {
-      specificationsCopied = false;
-      setError(`Product copy was created, but its specifications could not be copied: ${specificationError.message}`);
+      await invokeProductManager({
+        action: 'duplicate',
+        product_id: product.id,
+        product: payload,
+      });
+      await loadCatalog();
+      resetFilters();
+      setNotice('Product duplicated successfully.');
+    } catch (duplicateError) {
+      setError(duplicateError.message || 'Could not duplicate product.');
+    } finally {
+      setSaving(false);
     }
-    await loadCatalog();
-    resetFilters();
-    if (specificationsCopied) setNotice('Product duplicated successfully.');
   };
 
   const handleExport = () => {

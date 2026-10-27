@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   User,
+  MessageCircle,
 } from 'lucide-react';
 
 import TechubLogo from '../assets/TechubLogo.png';
@@ -24,6 +25,11 @@ const productSubLinks = [
 ];
 
 const navItems = [
+  {
+    label: 'Support Inbox',
+    href: '/admin/support',
+    icon: MessageCircle,
+  },
   {
     label: 'Order Fulfillment',
     href: '/admin/orders',
@@ -304,7 +310,7 @@ const handleLogout = async () => {
       
 {showLogoutModal && (
   <div
-    className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+    className="fixed inset-0 z-100 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
     onClick={() => {
       if (!isLoggingOut) setShowLogoutModal(false);
     }}

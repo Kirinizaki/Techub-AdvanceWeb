@@ -374,7 +374,7 @@ export default function AdminPriceManagement({ onLogout }) {
 
           {view === "list" ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left">
+              <table className="w-full min-w-225 text-left">
                 <thead><tr className="border-y border-slate-100 bg-slate-50/70 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   <th className="w-9 px-4 py-3"><input type="checkbox" checked={visibleProducts.length > 0 && visibleProducts.every((product) => selected.includes(product.id))} onChange={toggleAllVisible} aria-label="Select all visible products" className="accent-blue-600" /></th>
                   <th className="px-2 py-3">SKU &amp; Product Details</th><th className="px-3 py-3">Cost Basis</th><th className="px-3 py-3">Selling Price</th><th className="px-3 py-3">Standard MSRP</th><th className="px-3 py-3">Gross Margin</th><th className="px-3 py-3">Active Rules</th><th className="px-4 py-3 text-right">Action</th>
@@ -383,7 +383,7 @@ export default function AdminPriceManagement({ onLogout }) {
                   {loading ? <tr><td colSpan={8} className="px-4 py-12 text-center text-xs text-slate-500">Loading product prices…</td></tr> : visibleProducts.map((product) => (
                     <tr key={product.id} className="transition hover:bg-blue-50/30">
                       <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(product.id)} onChange={() => toggleSelected(product.id)} aria-label={`Select ${product.name}`} className="accent-blue-600" /></td>
-                      <td className="px-2 py-3"><div className="flex min-w-[230px] items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600"><Package size={15} /></span><div><p className="text-xs font-semibold text-slate-800">{product.name}</p><p className="mt-0.5 text-[10px] text-slate-400">SKU - {product.sku || "Not set"}</p><p className="text-[10px] text-slate-400">{product.category}</p></div></div></td>
+                      <td className="px-2 py-3"><div className="flex min-w-57.5 items-center gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600"><Package size={15} /></span><div><p className="text-xs font-semibold text-slate-800">{product.name}</p><p className="mt-0.5 text-[10px] text-slate-400">SKU - {product.sku || "Not set"}</p><p className="text-[10px] text-slate-400">{product.category}</p></div></div></td>
                       <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{product.cost === null ? "Unavailable" : money(product.cost)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-xs font-semibold text-slate-800">{money(product.selling)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{product.standard == null ? "Unavailable" : money(product.standard)}</td>
