@@ -119,7 +119,13 @@ useEffect(() => {
       if (!active) return;
 
       const failed = results.find((r) => r.error);
-      if (failed) setError(failed.error.message);
+      if (failed) {
+        console.error('Dashboard data load failed:', failed.error);
+        setError('Some dashboard information could not be loaded. Refresh to try again.');
+        setData(null);
+        setLoading(false);
+        return;
+      }
 
       const [products, queue, low, recent, shipped, revenue] = results;
       setData({

@@ -14,22 +14,16 @@ import {
 } from "lucide-react";
 import AdminLayout from "../../layouts/AdminLayout";
 import { supabase } from "../../lib/supabaseClient";
+import { edgeFunctionErrorMessage } from "../../lib/edgeFunctionErrors";
+import { fetchAllRows } from "../../lib/fetchAllRows";
 
-/* ------------------------------------------------------------------
-   RPC CONFIG
-   Your handoff lists the function names and argument TYPES, but not the
-   argument NAMES. supabase.rpc() needs the names. If an action fails with
-   "Could not find the function ...", fix the names here (see the query in
-   my message to look them up).
-------------------------------------------------------------------- */
+/* The existing schema stores fulfillment state on orders.order_status.
+   Confirmation already owns the stock deduction workflow; fulfillment only
+   advances the status with an expected-current-status guard. */
 const RPC = {
   confirm: (id) => ["confirm_customer_order", { p_order_id: id }],
   cancel: (id) => ["cancel_customer_order", { p_order_id: id }],
   collect: (id) => ["record_cod_collection", { p_order_id: id }],
-  fulfill: (id, status) => [
-    "update_order_fulfillment",
-    { p_order_id: id, p_status: status },
-  ],
 };
 
 const PAGE_SIZE = 8;
@@ -147,7 +141,8 @@ function getActions(o) {
       key: "processing",
       label: "Start Processing",
       tone: "primary",
-      call: () => RPC.fulfill(o.id, "processing"),
+      from: "confirmed",
+      to: "processing",
     });
   }
   if (s === "processing") {
@@ -155,7 +150,8 @@ function getActions(o) {
       key: "shipped",
       label: "Mark Shipped",
       tone: "primary",
-      call: () => RPC.fulfill(o.id, "shipped"),
+      from: "processing",
+      to: "shipped",
     });
   }
   if (s === "shipped") {
@@ -163,7 +159,8 @@ function getActions(o) {
       key: "delivered",
       label: "Mark Delivered",
       tone: "primary",
-      call: () => RPC.fulfill(o.id, "delivered"),
+      from: "shipped",
+      to: "delivered",
     });
   }
   if (s === "delivered" && o.payment_status !== "paid") {
@@ -215,14 +212,15 @@ export default function AdminOrderFulfillment({ onLogout }) {
     setLoading(true);
     setLoadError("");
 
-    const { data, error } = await supabase
+    const { data, error } = await fetchAllRows(() => supabase
       .from("orders")
       .select("*, order_items(*)")
       .order("created_at", { ascending: false })
-      .limit(500);
+      .order("id", { ascending: false }));
 
     if (error) {
-      setLoadError(error.message);
+      console.error("Order list load failed:", error);
+      setLoadError("Could not load orders. Refresh to try again.");
       setOrders([]);
     } else {
       setOrders((data ?? []).map(toOrder));
@@ -237,30 +235,51 @@ export default function AdminOrderFulfillment({ onLogout }) {
   async function runAction(order, action) {
     setConfirming(null);
     setBusyId(order.id);
+    try {
+      let error;
 
-    const [fn, args] = action.call();
-    const { error } = await supabase.rpc(fn, args);
+if (action.to) {
+  const { data, error: rpcError } = await supabase.rpc(
+    "update_order_fulfillment",
+    {
+      p_order_id: order.id,
+      p_new_status: action.to,
+    }
+  );
 
-    setBusyId(null);
+  error = rpcError;
 
-    if (error) {
+  if (!error && data?.error) {
+    error = new Error(data.error);
+  }
+} else {
+  const [fn, args] = action.call();
+  ({ error } = await supabase.rpc(fn, args));
+}
+
+      if (error) {
+        console.error("Order action failed:", error);
+        setNotice({
+          type: "error",
+          text: `${action.label} failed on ${order.order_number}: ${action.to ? await edgeFunctionErrorMessage(error) : "Please refresh and try again."}`,
+        });
+        return;
+      }
+      setNotice({ type: "success", text: `${action.label} done for ${order.order_number}.` });
+      await loadOrders();
+    } catch (error) {
       setNotice({
         type: "error",
         text: `${action.label} failed on ${order.order_number}: ${error.message}`,
       });
-      return;
+    } finally {
+      setBusyId(null);
     }
-
-    setNotice({
-      type: "success",
-      text: `${action.label} done for ${order.order_number}.`,
-    });
-    await loadOrders();
   }
 
   function onActionClick(order, action) {
     if (action.title) setConfirming({ order, action });
-    else runAction(order, action);
+    else if (!busyId) runAction(order, action);
   }
 
   /* ---- Summary numbers (computed from real data) ---- */
@@ -415,7 +434,7 @@ export default function AdminOrderFulfillment({ onLogout }) {
                 <Icon size={15} />
               </span>
             </div>
-            <p className="mt-2 text-2xl font-bold">{loading ? "…" : value}</p>
+            <p className="mt-2 text-2xl font-bold">{loading ? "…" : loadError ? "—" : value}</p>
             <p className="mt-1 text-[10px] text-slate-500">{note}</p>
           </div>
         ))}
@@ -461,7 +480,7 @@ export default function AdminOrderFulfillment({ onLogout }) {
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
             }`}
           >
-            {t.label} ({tabCounts[t.key] ?? 0})
+            {t.label} ({loadError ? "—" : tabCounts[t.key] ?? 0})
           </button>
         ))}
       </div>
@@ -698,10 +717,10 @@ export default function AdminOrderFulfillment({ onLogout }) {
           <div className="py-10 text-center text-sm text-slate-500">
             {orders.length === 0 && !loadError ? (
               <>
-                <p>No orders returned.</p>
+                <p>No orders are available right now.</p>
                 <p className="mx-auto mt-1 flex max-w-md items-center justify-center gap-1.5 text-xs text-amber-700">
                   <AlertTriangle size={12} />
-                  If orders exist in Supabase, your staff account may lack read access (RLS) on the orders table.
+                  Refresh the list or contact an administrator if you expected to see orders.
                 </p>
               </>
             ) : (

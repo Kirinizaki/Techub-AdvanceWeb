@@ -7,6 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+const loginResponseHeaders = { ...corsHeaders, "Cache-Control": "no-store", Pragma: "no-cache" };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -21,7 +22,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { identifier } = await req.json();
+    const body = await req.json();
+    const { identifier } = body;
 
     if (
       typeof identifier !== "string" ||
@@ -35,75 +37,55 @@ Deno.serve(async (req) => {
 
     const normalized = identifier.trim().toLowerCase();
 
-    // Email addresses can be passed directly to Supabase Auth.
-    if (normalized.includes("@")) {
-      return Response.json(
-        { email: normalized },
-        { headers: corsHeaders },
-      );
-    }
-
-    if (!/^[a-z0-9_]{3,24}$/.test(normalized)) {
+    if (!normalized.includes("@") && !/^[a-z0-9_]{3,24}$/.test(normalized)) {
       return Response.json(
         { error: "Enter a valid username or email." },
         { status: 400, headers: corsHeaders },
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    const supabaseAdmin = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-
-    const { data: profile, error } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("username", normalized)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Username lookup failed:", error.message);
-      return Response.json(
-        { error: "Unable to sign in right now. Please try again." },
-        { status: 500, headers: corsHeaders },
-      );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      throw new Error("Required server configuration is missing.");
     }
 
-    if (!profile) {
-      return Response.json(
-        { error: "Invalid username or password." },
-        { status: 401, headers: corsHeaders },
-      );
+    // Unknown usernames also perform a password-auth request against a
+    // reserved invalid domain. This avoids making username lookup a cheap
+    // bypass around Auth's credential-attempt rate limits.
+    let loginEmail = normalized.includes("@") ? normalized : "unknown-user@invalid.invalid";
+    if (!normalized.includes("@")) {
+      const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: profile, error: profileError } = await supabaseAdmin
+        .from("profiles").select("id").eq("username", normalized).maybeSingle();
+      if (profileError) {
+        console.error("Username lookup failed:", profileError.message);
+        throw new Error("Unable to verify credentials");
+      }
+      if (profile) {
+        const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(profile.id);
+        if (!userError && userData.user?.email) loginEmail = userData.user.email;
+      }
     }
 
-    const { data: userData, error: userError } =
-      await supabaseAdmin.auth.admin.getUserById(profile.id);
-
-    if (userError || !userData.user?.email) {
-      console.error("User email lookup failed:", userError?.message);
-      return Response.json(
-        { error: "Unable to sign in right now. Please try again." },
-        { status: 500, headers: corsHeaders },
-      );
+    // Resolve and verify the credentials in one server-side flow. Never send
+    // the user's private email address to the unauthenticated browser.
+    const loginClient = createClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: login, error: loginError } = await loginClient.auth.signInWithPassword({
+      email: loginEmail,
+      password: typeof body.password === "string" ? body.password : "",
+    });
+    if (loginError || !login.session || !login.user) {
+      throw new Error("Invalid credentials");
     }
 
-    return Response.json(
-      { email: userData.user.email },
-      { headers: corsHeaders },
-    );
+    return Response.json({ session: login.session }, { headers: loginResponseHeaders });
   } catch {
-    return Response.json(
-      { error: "Invalid request." },
-      { status: 400, headers: corsHeaders },
-    );
+    return Response.json({ error: "Invalid username or password." }, { status: 401, headers: corsHeaders });
   }
 });
