@@ -436,18 +436,12 @@ entrypoint = "./functions/username-to-email/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/username-to-email/*.html" ]
 
-<<<<<<<<< Temporary merge branch 1
 [functions.chat-support]
 enabled = true
 verify_jwt = false
 import_map = "./functions/chat-support/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
 entrypoint = "./functions/chat-support/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/chat-support/*.html" ]
-=========
+
 [functions.manage-inventory]
 enabled = true
 verify_jwt = false
@@ -459,10 +453,3 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/manage-order-fulfillment/deno.json"
 entrypoint = "./functions/manage-order-fulfillment/index.ts"
->>>>>>>>> Temporary merge branch 2
-
-[functions.manage-products]
-enabled = true
-verify_jwt = false
-import_map = "./functions/manage-products/deno.json"
-entrypoint = "./functions/manage-products/index.ts"

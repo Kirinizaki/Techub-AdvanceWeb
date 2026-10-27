@@ -27,6 +27,7 @@ function ChatSupport() {
   const [conversation, setConversation] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
   const messagesEndRef = useRef(null);
 
   const invokeChat = useCallback(async (body) => {
@@ -47,15 +48,26 @@ function ChatSupport() {
     setIsLoading(true);
     setLoadError("");
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      if (!sessionData?.session?.user) {
+        // Guests can chat with AI, but their messages are held only in component state.
+        setIsGuest(true);
+        setConversation(null);
+        setMessages([]);
+        setIsLoaded(true);
+        return;
+      }
+
+      setIsGuest(false);
       const data = await invokeChat({ action: "load" });
       setConversation(data.conversation ?? null);
       setMessages((data.messages ?? []).map(mapSavedMessage));
       setIsLoaded(true);
     } catch (error) {
       console.error("Unable to load support conversation:", error);
-      setLoadError(
-        error?.message || "We couldn't load your saved chat. Please sign in and try again.",
-      );
+      setLoadError(error?.message || "We couldn't load your saved chat. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +97,28 @@ function ChatSupport() {
     }
   };
 
+  const handleResumeAI = async () => {
+    if (isLoading || isGuest) return;
+    setIsLoading(true);
+    setLoadError("");
+    try {
+      const data = await invokeChat({ action: "resume_ai" });
+      setConversation(data.conversation ?? null);
+      setLoadError("");
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        text: "You're back with the Techub AI Assistant. How can I help?",
+        sender: "support",
+        createdAt: new Date().toISOString(),
+      }]);
+    } catch (error) {
+      console.error("Unable to resume AI support:", error);
+      setLoadError(error?.message || "We couldn't switch back to AI. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // Sends/retries the same persisted customer message and waits briefly when
@@ -99,6 +133,7 @@ function ChatSupport() {
       action: "send",
       message: text,
       clientMessageId,
+      guest: isGuest,
     };
 
     let data = await invokeChat(requestBody);
@@ -165,7 +200,7 @@ function ChatSupport() {
       if (replaced.some((item) => item.id === replyMessage.id)) return replaced;
       return [...replaced, replyMessage];
     });
-  }, [invokeChat]);
+  }, [invokeChat, isGuest]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -295,7 +330,13 @@ function ChatSupport() {
           >
             {!isLoaded && !loadError && (
               <p className="text-sm text-gray-500" role="status">
-                Loading your saved conversation...
+                Loading your conversation...
+              </p>
+            )}
+
+            {isLoaded && isGuest && (
+              <p className="rounded-lg border border-blue-100 bg-blue-50 p-2 text-xs text-blue-800">
+                Guest chat: messages are not saved and will disappear when you leave or refresh this page.
               </p>
             )}
 
@@ -378,6 +419,23 @@ function ChatSupport() {
                 )}
               </div>
             ))}
+
+            {conversation?.status === "awaiting_support" && (
+              <div className="rounded-lg border border-blue-100 bg-white p-3 text-sm">
+                <p className="mb-2 text-gray-700">
+                  You're waiting for a human support agent. You can switch back to AI replies at any time.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResumeAI}
+                  disabled={isLoading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Bot size={15} />
+                  Switch back to AI
+                </button>
+              </div>
+            )}
 
             {conversation?.status === "resolved" && (
               <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm">

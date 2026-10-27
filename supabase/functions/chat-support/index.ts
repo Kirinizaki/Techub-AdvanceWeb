@@ -441,32 +441,39 @@ export default {
     }
 
     const authorization = req.headers.get("Authorization");
-    if (!authorization?.startsWith("Bearer ")) {
-      return json({ error: "Please sign in to use persistent chat support." }, 401);
-    }
+    const publicApiKey = req.headers.get("apikey");
 
-    // Validate the caller before using the service-role client.
-    const authClient = createClient(supabaseUrl, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers: { Authorization: authorization } },
-    });
-    const { data: authData, error: authError } = await authClient.auth.getUser();
-    const user = authData?.user;
-
-    if (authError || !user) {
-      return json({ error: "Your session is invalid or has expired." }, 401);
-    }
-
-    let body: { action?: unknown; message?: unknown; clientMessageId?: unknown };
+    let body: { action?: unknown; message?: unknown; clientMessageId?: unknown; guest?: unknown };
     try {
       body = await req.json();
     } catch {
       return json({ error: "Request body must be valid JSON." }, 400);
     }
 
-    const action = body.action ?? "send";
-    if (!["load", "send", "reopen"].includes(String(action))) {
+    const action = String(body.action ?? "send");
+    if (!["load", "send", "reopen", "resume_ai"].includes(action)) {
       return json({ error: "Unsupported chat action." }, 400);
+    }
+
+    // Guest requests are stateless and may use only the public anon API key.
+    // They cannot load, reopen, resume, or mutate persisted conversations.
+    const isPublicApiKeyRequest = publicApiKey === anonKey;
+    const isGuestAction = action === "send" && body.guest === true;
+    let user: { id: string } | null = null;
+
+    if (authorization?.startsWith("Bearer ")) {
+      const authClient = createClient(supabaseUrl, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: authorization } },
+      });
+      const { data: authData } = await authClient.auth.getUser();
+      user = authData?.user ?? null;
+    }
+
+    const isGuestRequest = !user && isPublicApiKeyRequest && isGuestAction;
+
+    if (!user && !isGuestRequest) {
+      return json({ error: "A valid sign-in session is required for saved conversations." }, 401);
     }
 
     if (
@@ -479,7 +486,7 @@ export default {
     }
 
     if (
-      action === "send" &&
+      action === "send" && !isGuestRequest &&
       (typeof body.clientMessageId !== "string" ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.clientMessageId))
     ) {
@@ -493,6 +500,52 @@ export default {
     });
 
     try {
+      if (isGuestRequest) {
+        if (typeof body.message !== "string" || !body.message.trim() || body.message.length > 4000) {
+          return json({ error: "Message must contain 1–4000 characters." }, 400);
+        }
+        const guestMessage = body.message.trim();
+        let catalogContext = "";
+        try {
+          catalogContext = await getCatalogContext(db, guestMessage);
+        } catch (catalogError) {
+          console.error("Guest catalog context retrieval failed:", catalogError);
+        }
+
+        if (requestsHumanSupport(guestMessage)) {
+          return json({
+            guest: true,
+            reply: "I can help you here with the AI assistant. To request a human support agent and keep your conversation history, please sign in to your Techub account.",
+            handoff: { requested: false, status: "guest_sign_in_required" },
+          });
+        }
+
+        try {
+          let reply = await getGeminiReply(geminiKey, [], guestMessage, catalogContext);
+          if (requestedCatalogCategories(guestMessage).some((category) => category.name === "Graphics Cards")) {
+            reply = validateGpuRecommendations(reply, catalogContext);
+          }
+          return json({ guest: true, reply, conversation: null, userMessage: null, replyMessage: null });
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return json({ error: "The AI took too long to respond. Please try again." }, 504);
+          }
+          if (error instanceof Error && error.message === "AI_LIMIT") {
+            return json({ error: "AI usage limit reached. Please try again later." }, 502);
+          }
+          if (error instanceof Error && error.message === "AI_BUSY") {
+            return json({ error: "The AI service is busy. Please try again shortly." }, 502);
+          }
+          if (error instanceof Error && error.message === "AI_EMPTY") {
+            return json({ error: "The AI returned an empty response." }, 502);
+          }
+          console.error("Guest Gemini request failed:", error);
+          return json({ error: "The AI assistant could not respond. Please try again." }, 502);
+        }
+      }
+
+      if (!user) return json({ error: "Sign in to access saved conversations." }, 401);
+
       let { data: conversation, error: conversationError } = await db
         .from("support_conversations")
         .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
@@ -519,6 +572,35 @@ export default {
         }
 
         return json({ conversation, messages: savedMessages ?? [] });
+      }
+
+      if (action === "resume_ai") {
+        if (!conversation) {
+          return json({ error: "There is no saved conversation to switch back to AI." }, 404);
+        }
+        if (conversation.status !== "awaiting_support" && !conversation.handoff_requested) {
+          return json({ error: "This conversation is not waiting for human support." }, 409);
+        }
+
+        const { data: resumed, error: resumeError } = await db
+          .from("support_conversations")
+          .update({
+            status: "active",
+            handoff_requested: false,
+            handoff_requested_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", conversation.id)
+          .eq("customer_id", user.id)
+          .eq("status", "awaiting_support")
+          .select("id, customer_id, status, handoff_requested, handoff_requested_at, created_at, updated_at")
+          .maybeSingle();
+
+        if (resumeError || !resumed) {
+          console.error("AI resume failed:", resumeError?.message);
+          return json({ error: "Unable to switch back to AI. Please reload and try again." }, 500);
+        }
+        return json({ conversation: resumed });
       }
 
       if (action === "reopen") {
